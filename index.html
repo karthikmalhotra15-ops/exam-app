@@ -37,7 +37,7 @@ footer{display:flex;gap:8px;padding-top:10px}
 <script>
 const $=i=>document.getElementById(i);let files=[];
 const u=new URL(location.href);if(u.searchParams.get('k')){localStorage.k=u.searchParams.get('k');history.replaceState(null,'','/')}
-const K=localStorage.k||'';
+const K=localStorage.k||'';if(K){const m=document.querySelector('link[rel=manifest]');if(m)m.href='/manifest.json?k='+encodeURIComponent(K)}
 function shrink(f){return new Promise(res=>{const im=new Image(),url=URL.createObjectURL(f);im.onload=()=>{const k=Math.min(1,1800/Math.max(im.width,im.height)),c=document.createElement('canvas');
  c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(url);res(c.toDataURL('image/jpeg',.85))};im.src=url})}
 function draw(){const t=$('tray');t.innerHTML='';files.forEach((d,i)=>{const c=document.createElement('div');c.className='chip';c.innerHTML='<img src="'+d+'"><b>Page '+(i+1)+'</b>';

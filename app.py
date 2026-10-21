@@ -135,7 +135,9 @@ async def page(request): return HTMLResponse((HERE / "index.html").read_text())
 async def sw(request): return Response((HERE / "sw.js").read_text(), media_type="application/javascript", headers={"service-worker-allowed": "/"})
 async def icon(request): return Response((HERE / "icon.png").read_bytes(), media_type="image/png")
 async def manifest(request):
-    return JSONResponse({"name": "Exam", "short_name": "Exam", "start_url": "/", "display": "standalone", "background_color": "#0b0d10", "theme_color": "#0b0d10",
+    k = request.query_params.get("k", "")
+    start = "/?k=" + k if k and authed(request) else "/"
+    return JSONResponse({"name": "Exam", "short_name": "Exam", "start_url": start, "id": "/", "display": "standalone", "background_color": "#0b0d10", "theme_color": "#0b0d10",
                          "icons": [{"src": "/icon.png", "sizes": "512x512", "type": "image/png"}]})
 async def health(request): return JSONResponse({"ok": True, "mock": MOCK})
 
