@@ -39,6 +39,22 @@ PUSHLOG = []
 SMSLOG = []
 
 
+def mail(subject: str, body: str):
+    """Email the full answer to Karthik (Mail on the watch shows the whole thing). Env: SMTP_USER, SMTP_PASS (Gmail app password), MAIL_TO (default = SMTP_USER)."""
+    u, p = os.environ.get("SMTP_USER"), os.environ.get("SMTP_PASS")
+    if MOCK or not (u and p): return
+    try:
+        import smtplib
+        from email.message import EmailMessage
+        m = EmailMessage(); m["From"] = u; m["To"] = os.environ.get("MAIL_TO", u); m["Subject"] = subject; m.set_content(body)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=25) as s:
+            s.login(u, p.replace(" ", "")); s.send_message(m)
+        SMSLOG.append({"t": time.strftime("%H:%M:%S"), "mail": True})
+    except Exception as e:
+        SMSLOG.append({"t": time.strftime("%H:%M:%S"), "mail": False, "err": f"{type(e).__name__} {str(e)[:120]}"})
+    del SMSLOG[:-10]
+
+
 def sms(body: str):
     """Text via email-to-SMS gateway (T-Mobile). Needs env SMTP_USER, SMTP_PASS (Gmail app password), SMS_TO (number@tmomail.net)."""
     u, p, to = os.environ.get("SMTP_USER"), os.environ.get("SMTP_PASS"), os.environ.get("SMS_TO")
@@ -163,10 +179,15 @@ async def verify(images, drafts, note):
 
 
 ESSAY_SYS = ("You are an expert AP teacher writing a MODEL response to a student's PRACTICE question, for them to study from. Read every page image (prompt, documents, tables, graphs). "
-             "Identify the type and write the full-credit answer: APUSH/AP World LEQ or DBQ = thesis, contextualization, specific evidence (use the documents for a DBQ and add outside evidence), sourcing (HIPP) and reasoning, complexity; "
-             "SAQ/short answer = A, B, C parts, each 1-3 sentences; AP Statistics FRQ = every part with the full solution: state conditions, name the test or procedure, show the formula and calculation, give the conclusion in context (p-value vs alpha, interval interpretation); "
-             "AP Lang/Lit or any extended response = a strong thesis-driven response; science/math FRQ = every part with steps and units. "
-             "Length: an LEQ or DBQ should be about 550-700 words total; SAQ and FRQ parts stay tight. Plain text only: no markdown symbols, no bullet characters, short paragraphs separated by blank lines, label parts clearly (Thesis, Body 1, Part (a)...). Be accurate and complete but not padded.")
+             "APUSH/AP World/Euro LEQ or DBQ: use EXACTLY these labeled sections and nothing else: "
+             "Intro (2-3 sentences of contextualization, then a one-sentence thesis with a clear line of reasoning), "
+             "Body 1 (topic sentence, 2 specific pieces of evidence, explain how they support the thesis; for a DBQ use 2-3 documents with sourcing/HIPP on at least one), "
+             "Body 2 (same pattern, different category of evidence), "
+             "Complexity (2-3 sentences: a counterargument, continuity vs change, or a connection to another period), "
+             "Conclusion (one sentence). Total 400-500 words. "
+             "SAQ: parts A, B, C, 1-3 sentences each. AP Statistics FRQ: every part with conditions, the procedure, formula and calculation, and the conclusion in context. "
+             "Other science/math FRQ: every part with steps and units. AP Lang/Lit or other extended response: thesis-driven, about 400-500 words. "
+             "Plain text only: no markdown symbols or bullets, short paragraphs separated by blank lines, section labels on their own line.")
 ESSAYS = []
 
 
@@ -195,6 +216,7 @@ async def essay_job(images, note, jid):
         parts_text = "ERROR: couldn't write the answer (%s). Send it again." % type(e).__name__
     ESSAYS.append({"id": jid, "t": time.strftime("%H:%M"), "text": parts_text}); del ESSAYS[:-5]
     with open(DATA / "log.md", "a") as f: f.write(f"\n## ESSAY {time.strftime('%Y-%m-%d %H:%M')}\n{parts_text}\n")
+    asyncio.get_running_loop().run_in_executor(None, mail, "Model answer " + time.strftime("%H:%M"), parts_text)
     ps = chunks(parts_text)
     for i, p in enumerate(ps, 1):
         await asyncio.to_thread(push, f"Essay {i}/{len(ps)}", p)
