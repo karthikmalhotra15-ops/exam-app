@@ -46,7 +46,8 @@ function draw(){const t=$('tray');t.innerHTML='';files.forEach((d,i)=>{const c=d
 for(const [b,i] of [['camb','cam'],['pickb','pick']]){$(b).onclick=()=>$(i).click();$(i).onchange=async e=>{for(const f of e.target.files)files.push(await shrink(f));e.target.value='';draw()}}
 $('go').onclick=async()=>{if(!K){$('note').style.display='block';$('note').textContent='No key on this page. Open the setup link again.';return}
  const b=$('go');b.disabled=true;b.textContent='Working';$('out').style.display='none';
- try{const r=await fetch('/exam',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify({images:files})});
+ try{let sub=null;try{const reg=await navigator.serviceWorker.ready;sub=(await reg.pushManager.getSubscription())}catch(e){}
+ const r=await fetch('/exam',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify({images:files,sub:sub?sub.toJSON():null})});
   if(r.status==401){$('note').style.display='block';$('note').textContent='Wrong key. Open the setup link again.';return}
   const j=await r.json();$('out').textContent=j.reply||j.error;$('out').style.display='block';if(j.reply){const H=JSON.parse(localStorage.hist||'[]');H.unshift({t:new Date().toLocaleString([], {weekday:'short',hour:'numeric',minute:'2-digit'}),a:j.reply});localStorage.hist=JSON.stringify(H.slice(0,10));drawHist()}
   $('note').style.display='block';$('note').textContent='Answered in '+j.secs+'s. A second, deeper check is running and will alert you only if something needs fixing.';files=[];draw()}

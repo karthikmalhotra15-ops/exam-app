@@ -156,6 +156,9 @@ async def exam(request):
     images = [d for d in (b.get("images") or [])[:MAX_PAGES] if isinstance(d, str) and d.startswith("data:image")]
     if not images: return JSONResponse({"error": "no images"}, status_code=400)
     note = (b.get("note") or "")[:300]
+    s = b.get("sub")
+    if isinstance(s, dict) and s.get("endpoint"):          # phone sends its push address with every request: no server-side registration needed
+        SUBS.write_text(json.dumps([x for x in subs() if x.get("endpoint") != s["endpoint"]] + [s]))
     t = time.time()
     drafts = await draft(images, note)
     reply = fmt(drafts)
