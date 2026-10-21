@@ -35,22 +35,29 @@ def subs() -> list:
     except Exception: return []
 
 
+PUSHLOG = []
+
+
 def push(title: str, body: str):
     if MOCK:
         print("[mock push]", title, body, flush=True); return 0
     from pywebpush import webpush, WebPushException
-    keep, n = [], 0
+    keep, n, errs = [], 0, []
     for s in subs():
         try:
             webpush(subscription_info=s, data=json.dumps({"title": title, "body": body[:230]}), vapid_private_key=os.environ["VAPID_PRIVATE"],
                     vapid_claims={"sub": "mailto:exam@example.com"}, ttl=3600)
             keep.append(s); n += 1
         except WebPushException as e:
+            errs.append(f"{getattr(e.response, 'status_code', '?')} {str(e)[:160]}")
             if getattr(e.response, "status_code", 0) in (404, 410): continue
             keep.append(s)
         except Exception as e:
-            print("push error", e, flush=True); keep.append(s)
-    SUBS.write_text(json.dumps(keep)); return n
+            errs.append(f"{type(e).__name__} {str(e)[:160]}"); print("push error", e, flush=True); keep.append(s)
+    SUBS.write_text(json.dumps(keep))
+    PUSHLOG.append({"t": time.strftime("%H:%M:%S"), "title": title, "subs": len(keep) + len([1 for _ in errs if "404" in _ or "410" in _]), "sent": n, "errs": errs})
+    del PUSHLOG[:-10]
+    return n
 
 
 _client = None
@@ -126,8 +133,14 @@ async def exam(request):
 async def sub(request):
     if not authed(request): return JSONResponse({"error": "unauthorized"}, status_code=401)
     s = await request.json()
+    print("sub registered", s.get("endpoint", "")[:40], flush=True)
     cur = [x for x in subs() if x.get("endpoint") != s.get("endpoint")] + [s]
     SUBS.write_text(json.dumps(cur)); return JSONResponse({"ok": True})
+
+
+async def debug(request):
+    if not authed(request): return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return JSONResponse({"subs": len(subs()), "endpoints": [s.get("endpoint", "")[:50] for s in subs()], "pushlog": PUSHLOG})
 
 
 async def vapid(request): return JSONResponse({"key": os.environ.get("VAPID_PUBLIC", "")})
@@ -141,7 +154,7 @@ async def manifest(request):
                          "icons": [{"src": "/icon.png", "sizes": "512x512", "type": "image/png"}]})
 async def health(request): return JSONResponse({"ok": True, "mock": MOCK})
 
-app = Starlette(routes=[Route("/", page), Route("/exam", exam, methods=["POST"]), Route("/sub", sub, methods=["POST"]), Route("/vapid", vapid),
+app = Starlette(routes=[Route("/", page), Route("/exam", exam, methods=["POST"]), Route("/sub", sub, methods=["POST"]), Route("/vapid", vapid), Route("/debug", debug),
                         Route("/sw.js", sw), Route("/icon.png", icon), Route("/manifest.json", manifest), Route("/health", health)])
 
 if __name__ == "__main__":
