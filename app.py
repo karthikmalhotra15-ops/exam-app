@@ -40,16 +40,14 @@ SMSLOG = []
 
 
 def mail(subject: str, body: str):
-    """Email the full answer to Karthik (Mail on the watch shows the whole thing). Env: SMTP_USER, SMTP_PASS (Gmail app password), MAIL_TO (default = SMTP_USER)."""
-    u, p = os.environ.get("SMTP_USER"), os.environ.get("SMTP_PASS")
-    if MOCK or not (u and p): return
+    """Email the full answer to Karthik via his Google Apps Script mailer (Render blocks SMTP). Env: MAIL_URL, MAIL_SECRET."""
+    url, sec = os.environ.get("MAIL_URL"), os.environ.get("MAIL_SECRET")
+    if MOCK or not (url and sec): return
     try:
-        import smtplib
-        from email.message import EmailMessage
-        m = EmailMessage(); m["From"] = u; m["To"] = os.environ.get("MAIL_TO", u); m["Subject"] = subject; m.set_content(body)
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=25) as s:
-            s.login(u, p.replace(" ", "")); s.send_message(m)
-        SMSLOG.append({"t": time.strftime("%H:%M:%S"), "mail": True})
+        import urllib.request
+        req = urllib.request.Request(url, json.dumps({"secret": sec, "subject": subject, "body": body}).encode(), {"content-type": "text/plain"})
+        r = urllib.request.urlopen(req, timeout=40).read(20).decode(errors="ignore")
+        SMSLOG.append({"t": time.strftime("%H:%M:%S"), "mail": r.strip() == "ok", "resp": r.strip()[:20]})
     except Exception as e:
         SMSLOG.append({"t": time.strftime("%H:%M:%S"), "mail": False, "err": f"{type(e).__name__} {str(e)[:120]}"})
     del SMSLOG[:-10]
