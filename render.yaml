@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: karthik-exam
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: EXAM_TOKEN
+        sync: false
+      - key: VAPID_PUBLIC
+        sync: false
+      - key: VAPID_PRIVATE
+        sync: false

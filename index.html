@@ -1,0 +1,64 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Exam">
+<link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="/icon.png"><title>Exam</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100dvh;background:#0b0d10;color:#e8eaed;font:16px -apple-system,system-ui,sans-serif}
+#app{display:flex;flex-direction:column;height:100dvh;padding:env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 12px)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 0}
+h1{font-size:17px;font-weight:600;margin:0;letter-spacing:.2px}
+#st{font-size:12px;color:#8a9099}
+#main{flex:1;overflow:auto;padding-bottom:8px}
+#tray{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.chip{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;background:#161a20;border:1px solid #232830}
+.chip img{width:100%;height:100%;object-fit:cover}
+.chip b{position:absolute;left:6px;bottom:6px;font-size:11px;background:#0008;padding:2px 6px;border-radius:4px;font-weight:500}
+.chip button{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:12px;border:0;background:#000a;color:#fff;display:grid;place-items:center;padding:0}
+#empty{color:#6b7280;font-size:14px;line-height:1.5;padding:24px 4px}
+#out{margin-top:14px;padding:14px;border-radius:10px;background:#161a20;border:1px solid #232830;white-space:pre-wrap;font:15px/1.6 ui-monospace,Menlo,monospace;display:none}
+#note{margin-top:10px;font-size:13px;color:#8a9099;display:none}
+footer{display:flex;gap:8px;padding-top:10px}
+.btn{height:48px;border-radius:10px;border:1px solid #2a303a;background:#161a20;color:#e8eaed;font:500 15px -apple-system,sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px}
+.btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#go{flex:1;background:#e8eaed;color:#0b0d10;border-color:#e8eaed}
+#go:disabled{opacity:.4}
+#bell{height:32px;font-size:12px;padding:0 10px;border-radius:8px}
+</style></head><body><div id="app">
+<header><h1>Practice test</h1><div><button class="btn" id="bell">Enable alerts</button></div></header>
+<div id="main"><div id="tray"></div><div id="empty">Add a photo of each page, in order, then send. Answers show here and are pushed to your watch.</div>
+<div id="out"></div><div id="note"></div></div>
+<input id="cam" type="file" accept="image/*" capture="environment" hidden>
+<input id="pick" type="file" accept="image/*" multiple hidden>
+<footer>
+<button class="btn" id="camb" aria-label="Camera"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+<button class="btn" id="pickb" aria-label="Choose photos"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 16l-5-5-8 9"/></svg></button>
+<button class="btn" id="go" disabled>Send</button></footer></div>
+<script>
+const $=i=>document.getElementById(i);let files=[];
+const u=new URL(location.href);if(u.searchParams.get('k')){localStorage.k=u.searchParams.get('k');history.replaceState(null,'','/')}
+const K=localStorage.k||'';
+function shrink(f){return new Promise(res=>{const im=new Image(),url=URL.createObjectURL(f);im.onload=()=>{const k=Math.min(1,1800/Math.max(im.width,im.height)),c=document.createElement('canvas');
+ c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(url);res(c.toDataURL('image/jpeg',.85))};im.src=url})}
+function draw(){const t=$('tray');t.innerHTML='';files.forEach((d,i)=>{const c=document.createElement('div');c.className='chip';c.innerHTML='<img src="'+d+'"><b>Page '+(i+1)+'</b>';
+ const x=document.createElement('button');x.innerHTML='<svg viewBox="0 0 24 24" width="12" height="12" stroke="#fff" stroke-width="2.4" fill="none"><path d="M6 6l12 12M18 6L6 18"/></svg>';x.onclick=()=>{files.splice(i,1);draw()};c.appendChild(x);t.appendChild(c)});
+ $('empty').style.display=files.length?'none':'block';$('go').disabled=!files.length;$('go').textContent=files.length?'Send '+files.length+' page'+(files.length>1?'s':''):'Send'}
+for(const [b,i] of [['camb','cam'],['pickb','pick']]){$(b).onclick=()=>$(i).click();$(i).onchange=async e=>{for(const f of e.target.files)files.push(await shrink(f));e.target.value='';draw()}}
+$('go').onclick=async()=>{if(!K){$('note').style.display='block';$('note').textContent='No key on this page. Open the setup link again.';return}
+ const b=$('go');b.disabled=true;b.textContent='Working';$('out').style.display='none';
+ try{const r=await fetch('/exam',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify({images:files})});
+  if(r.status==401){$('note').style.display='block';$('note').textContent='Wrong key. Open the setup link again.';return}
+  const j=await r.json();$('out').textContent=j.reply||j.error;$('out').style.display='block';
+  $('note').style.display='block';$('note').textContent='Answered in '+j.secs+'s. A second, deeper check is running and will alert you only if something needs fixing.';files=[];draw()}
+ catch(e){$('note').style.display='block';$('note').textContent='Could not reach the server.'}finally{b.textContent=files.length?'Send '+files.length+' pages':'Send';b.disabled=!files.length}};
+function b64(s){const p='='.repeat((4-s.length%4)%4),r=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)))}
+async function alerts(){try{const reg=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;
+ if(await Notification.requestPermission()!=='granted'){$('bell').textContent='Blocked';return}
+ const k=(await (await fetch('/vapid')).json()).key;
+ const sub=(await reg.pushManager.getSubscription())||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k)});
+ await fetch('/sub',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify(sub)});$('bell').textContent='Alerts on'}catch(e){$('bell').textContent='Add to Home Screen first'}}
+$('bell').onclick=alerts;
+fetch('/health').catch(()=>{});
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').then(async reg=>{try{await navigator.serviceWorker.ready;const s=await reg.pushManager.getSubscription();
+ if(s&&K){await fetch('/sub',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify(s)});$('bell').textContent='Alerts on'}}catch(e){}})}
+</script></body></html>
