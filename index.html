@@ -59,7 +59,7 @@ async function alerts(){try{const reg=await navigator.serviceWorker.register('/s
  const sub=(await reg.pushManager.getSubscription())||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k)});
  const r=await fetch('/sub',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify(sub)});$('bell').textContent=r.ok?'Alerts on':('Failed '+r.status+(K?'':' no key'))}catch(e){$('bell').textContent='Err: '+String(e.message||e).slice(0,30)}}
 $('bell').onclick=alerts;
-fetch('/health').catch(()=>{});
+fetch('/health').then(()=>fetch('/warm',{headers:{'x-token':K}})).catch(()=>{});
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').then(async reg=>{try{await navigator.serviceWorker.ready;const s=await reg.pushManager.getSubscription();
  if(s&&K){const r=await fetch('/sub',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify(s)});$('bell').textContent=r.ok?'Alerts on':('Failed '+r.status)}else if(s&&!K){$('bell').textContent='No key'}}catch(e){}})}
 </script></body></html>

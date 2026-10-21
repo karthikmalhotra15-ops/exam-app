@@ -198,10 +198,25 @@ async def manifest(request):
     start = "/?k=" + k if k and authed(request) else "/"
     return JSONResponse({"name": "Exam", "short_name": "Exam", "start_url": start, "id": "/", "display": "standalone", "background_color": "#0b0d10", "theme_color": "#0b0d10",
                          "icons": [{"src": "/icon.png", "sizes": "512x512", "type": "image/png"}]})
+_warm = {"t": 0}
+
+
+async def warm(request):
+    """Opening the app calls this: loads the SDK, opens connections to both models and imports push, so the first real send is fast."""
+    if not authed(request): return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if not MOCK and time.time() - _warm["t"] > 240:
+        _warm["t"] = time.time()
+        async def ping(model):
+            try: await client().messages.create(model=model, max_tokens=1, messages=[{"role": "user", "content": "hi"}])
+            except Exception as e: print("warm err", model, type(e).__name__, flush=True)
+        await asyncio.gather(ping(FAST), ping(SMART), asyncio.to_thread(lambda: __import__("pywebpush")))
+    return JSONResponse({"ok": True})
+
+
 async def health(request): return JSONResponse({"ok": True, "mock": MOCK})
 
 app = Starlette(routes=[Route("/", page), Route("/exam", exam, methods=["POST"]), Route("/sub", sub, methods=["POST"]), Route("/vapid", vapid), Route("/debug", debug),
-                        Route("/sw.js", sw), Route("/icon.png", icon), Route("/manifest.json", manifest), Route("/health", health)])
+                        Route("/sw.js", sw), Route("/icon.png", icon), Route("/manifest.json", manifest), Route("/health", health), Route("/warm", warm)])
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 7860)))
