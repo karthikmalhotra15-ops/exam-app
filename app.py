@@ -79,6 +79,18 @@ def _push(title: str, body: str, t0=0):
             keep.append(s)
         except Exception as e:
             errs.append(f"{type(e).__name__} {str(e)[:160]}"); print("push error", e, flush=True); keep.append(s)
+    # also push through the Jarvis app's channel (already mirrors to the watch)
+    try:
+        js = json.loads(os.environ.get("JARVIS_SUBS", "[]")); jk = os.environ.get("JARVIS_VAPID")
+        for s in js if jk else []:
+            try:
+                webpush(subscription_info=s, data=json.dumps({"title": title, "body": body[:1800], "url": "/"}), vapid_private_key=jk,
+                        vapid_claims={"sub": "mailto:jarvis@example.com"}, ttl=3600)
+                n += 1
+            except Exception as e:
+                errs.append("jarvis " + type(e).__name__ + " " + str(e)[:120])
+    except Exception as e:
+        errs.append("jarvis cfg " + str(e)[:80])
     SUBS.write_text(json.dumps(keep))
     PUSHLOG.append({"t": time.strftime("%H:%M:%S"), "title": title, "subs": len(keep) + len([1 for _ in errs if "404" in _ or "410" in _]), "sent": n, "errs": errs})
     del PUSHLOG[:-10]
