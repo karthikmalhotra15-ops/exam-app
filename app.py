@@ -70,7 +70,7 @@ def _push(title: str, body: str, t0=0):
     keep, n, errs = [], 0, []
     for s in subs():
         try:
-            webpush(subscription_info=s, data=json.dumps({"title": title, "body": body[:230]}), vapid_private_key=os.environ["VAPID_PRIVATE"],
+            webpush(subscription_info=s, data=json.dumps({"title": title, "body": body[:1800]}), vapid_private_key=os.environ["VAPID_PRIVATE"],
                     vapid_claims={"sub": "mailto:exam@example.com"}, ttl=3600)
             keep.append(s); n += 1
         except WebPushException as e:
@@ -129,7 +129,7 @@ async def check(images, drafts, note):
 
 
 def fmt(drafts):
-    return drafts[0] if len(drafts) == 1 else "\n".join(f"p{i+1}: " + d.replace("\n", " | ") for i, d in enumerate(drafts))
+    return drafts[0] if len(drafts) == 1 else "\n\n".join(f"PAGE {i+1}\n" + d for i, d in enumerate(drafts))
 
 
 async def verify(images, drafts, note):
@@ -145,7 +145,7 @@ async def verify(images, drafts, note):
     if not bad:
         await asyncio.to_thread(push, "Answers checked", "Double-checked everything: all good")
     else:
-        fixes = " ".join(f"p{i}: " + r.replace("\n", " | ") for i, r in bad)
+        fixes = "\n".join(f"PAGE {i}: " + r for i, r in bad)
         await asyncio.to_thread(push, "Fix these answers", fixes)
         await asyncio.to_thread(sms, "FIX: " + fixes)
 
@@ -160,8 +160,8 @@ async def exam(request):
     drafts = await draft(images, note)
     reply = fmt(drafts)
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, push, "Answers", reply.replace("\n", " | "))   # background: never make the screen wait on Apple
-    loop.run_in_executor(None, sms, "Answers: " + reply.replace("\n", " | "))
+    loop.run_in_executor(None, push, "Answers", reply)   # background: never make the screen wait on Apple
+    loop.run_in_executor(None, sms, "Answers: " + reply)
     asyncio.create_task(verify(images, drafts, note))
     return JSONResponse({"reply": reply, "secs": round(time.time() - t, 1)})
 

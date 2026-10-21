@@ -17,7 +17,7 @@ h1{font-size:17px;font-weight:600;margin:0;letter-spacing:.2px}
 .chip button{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:12px;border:0;background:#000a;color:#fff;display:grid;place-items:center;padding:0}
 #empty{color:#6b7280;font-size:14px;line-height:1.5;padding:24px 4px}
 #out{margin-top:14px;padding:14px;border-radius:10px;background:#161a20;border:1px solid #232830;white-space:pre-wrap;font:15px/1.6 ui-monospace,Menlo,monospace;display:none}
-#note{margin-top:10px;font-size:13px;color:#8a9099;display:none}
+#hist details{margin-top:10px;background:#161a20;border:1px solid #232830;border-radius:10px;padding:10px 12px}#hist summary{font-size:13px;color:#8a9099}#hist pre{margin:8px 0 0;white-space:pre-wrap;font:14px/1.6 ui-monospace,Menlo,monospace}#note{margin-top:10px;font-size:13px;color:#8a9099;display:none}
 footer{display:flex;gap:8px;padding-top:10px}
 .btn{height:48px;border-radius:10px;border:1px solid #2a303a;background:#161a20;color:#e8eaed;font:500 15px -apple-system,sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px}
 .btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -27,7 +27,7 @@ footer{display:flex;gap:8px;padding-top:10px}
 </style></head><body><div id="app">
 <header><h1>Practice test</h1><div><button class="btn" id="bell">Enable alerts</button></div></header>
 <div id="main"><div id="tray"></div><div id="empty">Add a photo of each page, in order, then send. Answers show here and are pushed to your watch.</div>
-<div id="out"></div><div id="note"></div></div>
+<div id="out"></div><div id="note"></div><div id="hist"></div></div>
 <input id="cam" type="file" accept="image/*" capture="environment" hidden>
 <input id="pick" type="file" accept="image/*" multiple hidden>
 <footer>
@@ -48,9 +48,10 @@ $('go').onclick=async()=>{if(!K){$('note').style.display='block';$('note').textC
  const b=$('go');b.disabled=true;b.textContent='Working';$('out').style.display='none';
  try{const r=await fetch('/exam',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify({images:files})});
   if(r.status==401){$('note').style.display='block';$('note').textContent='Wrong key. Open the setup link again.';return}
-  const j=await r.json();$('out').textContent=j.reply||j.error;$('out').style.display='block';
+  const j=await r.json();$('out').textContent=j.reply||j.error;$('out').style.display='block';if(j.reply){const H=JSON.parse(localStorage.hist||'[]');H.unshift({t:new Date().toLocaleString([], {weekday:'short',hour:'numeric',minute:'2-digit'}),a:j.reply});localStorage.hist=JSON.stringify(H.slice(0,10));drawHist()}
   $('note').style.display='block';$('note').textContent='Answered in '+j.secs+'s. A second, deeper check is running and will alert you only if something needs fixing.';files=[];draw()}
  catch(e){$('note').style.display='block';$('note').textContent='Could not reach the server.'}finally{b.textContent=files.length?'Send '+files.length+' pages':'Send';b.disabled=!files.length}};
+function drawHist(){const H=JSON.parse(localStorage.hist||'[]');$('hist').innerHTML=H.map(x=>'<details><summary>'+x.t+'</summary><pre></pre></details>').join('');$('hist').querySelectorAll('pre').forEach((p,i)=>p.textContent=H[i].a)}drawHist();
 function b64(s){const p='='.repeat((4-s.length%4)%4),r=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)))}
 async function alerts(){try{const reg=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;
  if(await Notification.requestPermission()!=='granted'){$('bell').textContent='Blocked';return}
