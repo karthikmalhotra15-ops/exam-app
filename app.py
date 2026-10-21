@@ -130,7 +130,11 @@ async def exam(request):
     return JSONResponse({"reply": reply, "secs": round(time.time() - t, 1)})
 
 
+SUBTRY = []
+
+
 async def sub(request):
+    SUBTRY.append({"t": time.strftime("%H:%M:%S"), "has_key": bool(request.headers.get("x-token")), "ok": authed(request)}); del SUBTRY[:-10]
     if not authed(request): return JSONResponse({"error": "unauthorized"}, status_code=401)
     s = await request.json()
     print("sub registered", s.get("endpoint", "")[:40], flush=True)
@@ -140,7 +144,7 @@ async def sub(request):
 
 async def debug(request):
     if not authed(request): return JSONResponse({"error": "unauthorized"}, status_code=401)
-    return JSONResponse({"subs": len(subs()), "endpoints": [s.get("endpoint", "")[:50] for s in subs()], "pushlog": PUSHLOG})
+    return JSONResponse({"subs": len(subs()), "endpoints": [s.get("endpoint", "")[:50] for s in subs()], "pushlog": PUSHLOG, "subtry": SUBTRY})
 
 
 async def vapid(request): return JSONResponse({"key": os.environ.get("VAPID_PUBLIC", "")})
