@@ -148,7 +148,13 @@ async def debug(request):
 
 
 async def vapid(request): return JSONResponse({"key": os.environ.get("VAPID_PUBLIC", "")})
-async def page(request): return HTMLResponse((HERE / "index.html").read_text())
+async def page(request):
+    h = (HERE / "index.html").read_text()
+    k = request.query_params.get("k", "")
+    if k and authed(request):
+        h = h.replace('href="/manifest.json"', 'href="/manifest.json?k=' + k + '"')
+        h = h.replace("const K=localStorage.k||'';", "const K=localStorage.k||'';")
+    return HTMLResponse(h, headers={"cache-control": "no-store"})
 async def sw(request): return Response((HERE / "sw.js").read_text(), media_type="application/javascript", headers={"service-worker-allowed": "/"})
 async def icon(request): return Response((HERE / "icon.png").read_bytes(), media_type="image/png")
 async def manifest(request):
