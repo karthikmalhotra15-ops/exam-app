@@ -36,9 +36,34 @@ def subs() -> list:
 
 
 PUSHLOG = []
+SMSLOG = []
+
+
+def sms(body: str):
+    """Text via email-to-SMS gateway (T-Mobile). Needs env SMTP_USER, SMTP_PASS (Gmail app password), SMS_TO (number@tmomail.net)."""
+    u, p, to = os.environ.get("SMTP_USER"), os.environ.get("SMTP_PASS"), os.environ.get("SMS_TO")
+    if MOCK or not (u and p and to): return
+    try:
+        import smtplib
+        from email.message import EmailMessage
+        m = EmailMessage(); m["From"] = u; m["To"] = to; m.set_content(body[:300])
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as s:
+            s.login(u, p.replace(" ", "")); s.send_message(m)
+        SMSLOG.append({"t": time.strftime("%H:%M:%S"), "ok": True})
+    except Exception as e:
+        SMSLOG.append({"t": time.strftime("%H:%M:%S"), "ok": False, "err": f"{type(e).__name__} {str(e)[:120]}"})
+    del SMSLOG[:-10]
 
 
 def push(title: str, body: str):
+    t0 = time.time()
+    try:
+        return _push(title, body, t0)
+    finally:
+        if PUSHLOG: PUSHLOG[-1]["secs"] = round(time.time() - t0, 1)
+
+
+def _push(title: str, body: str, t0=0):
     if MOCK:
         print("[mock push]", title, body, flush=True); return 0
     from pywebpush import webpush, WebPushException
@@ -120,7 +145,9 @@ async def verify(images, drafts, note):
     if not bad:
         await asyncio.to_thread(push, "Answers checked", "Double-checked everything: all good")
     else:
-        await asyncio.to_thread(push, "Fix these answers", " ".join(f"p{i}: " + r.replace("\n", " | ") for i, r in bad))
+        fixes = " ".join(f"p{i}: " + r.replace("\n", " | ") for i, r in bad)
+        await asyncio.to_thread(push, "Fix these answers", fixes)
+        await asyncio.to_thread(sms, "FIX: " + fixes)
 
 
 async def exam(request):
@@ -132,7 +159,9 @@ async def exam(request):
     t = time.time()
     drafts = await draft(images, note)
     reply = fmt(drafts)
-    await asyncio.to_thread(push, "Answers", reply.replace("\n", " | "))
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, push, "Answers", reply.replace("\n", " | "))   # background: never make the screen wait on Apple
+    loop.run_in_executor(None, sms, "Answers: " + reply.replace("\n", " | "))
     asyncio.create_task(verify(images, drafts, note))
     return JSONResponse({"reply": reply, "secs": round(time.time() - t, 1)})
 
@@ -151,7 +180,7 @@ async def sub(request):
 
 async def debug(request):
     if not authed(request): return JSONResponse({"error": "unauthorized"}, status_code=401)
-    return JSONResponse({"subs": len(subs()), "endpoints": [s.get("endpoint", "")[:50] for s in subs()], "pushlog": PUSHLOG, "subtry": SUBTRY})
+    return JSONResponse({"subs": len(subs()), "endpoints": [s.get("endpoint", "")[:50] for s in subs()], "pushlog": PUSHLOG, "subtry": SUBTRY, "smslog": SMSLOG})
 
 
 async def vapid(request): return JSONResponse({"key": os.environ.get("VAPID_PUBLIC", "")})
