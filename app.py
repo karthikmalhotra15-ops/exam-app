@@ -162,6 +162,50 @@ async def verify(images, drafts, note):
         await asyncio.to_thread(sms, "FIX: " + fixes)
 
 
+ESSAY_SYS = ("You are an expert AP teacher writing a MODEL response to a student's PRACTICE question, for them to study from. Read every page image (prompt, documents, tables, graphs). "
+             "Identify the type and write the full-credit answer: APUSH/AP World LEQ or DBQ = thesis, contextualization, specific evidence (use the documents for a DBQ and add outside evidence), sourcing (HIPP) and reasoning, complexity; "
+             "SAQ/short answer = A, B, C parts, each 1-3 sentences; AP Statistics FRQ = every part with the full solution: state conditions, name the test or procedure, show the formula and calculation, give the conclusion in context (p-value vs alpha, interval interpretation); "
+             "AP Lang/Lit or any extended response = a strong thesis-driven response; science/math FRQ = every part with steps and units. "
+             "Length: an LEQ or DBQ should be about 550-700 words total; SAQ and FRQ parts stay tight. Plain text only: no markdown symbols, no bullet characters, short paragraphs separated by blank lines, label parts clearly (Thesis, Body 1, Part (a)...). Be accurate and complete but not padded.")
+ESSAYS = []
+
+
+def chunks(text: str, n: int = 2200) -> list:
+    out, cur = [], ""
+    for para in text.split("\n\n"):
+        while len(para) > n:
+            cut = para.rfind(". ", 0, n) + 1 or n
+            if cur: out.append(cur); cur = ""
+            out.append(para[:cut].strip()); para = para[cut:].strip()
+        if len(cur) + len(para) + 2 > n and cur: out.append(cur); cur = para
+        else: cur = (cur + "\n\n" + para) if cur else para
+    if cur: out.append(cur)
+    return out
+
+
+async def essay_job(images, note, jid):
+    try:
+        if MOCK: parts_text = "Thesis: mock essay.\n\nBody: mock."
+        else:
+            content = [img_block(d) for d in images] + [{"type": "text", "text": "Student note: " + note + "\nWrite the model response."}]
+            r = await asyncio.wait_for(client().messages.create(model=SMART, max_tokens=7000, system=ESSAY_SYS, thinking={"type": "adaptive"},
+                                       extra_body={"output_config": {"effort": "medium"}}, messages=[{"role": "user", "content": content}]), 420)
+            parts_text = "".join(b.text for b in r.content if b.type == "text").strip()
+    except Exception as e:
+        parts_text = "ERROR: couldn't write the answer (%s). Send it again." % type(e).__name__
+    ESSAYS.append({"id": jid, "t": time.strftime("%H:%M"), "text": parts_text}); del ESSAYS[:-5]
+    with open(DATA / "log.md", "a") as f: f.write(f"\n## ESSAY {time.strftime('%Y-%m-%d %H:%M')}\n{parts_text}\n")
+    ps = chunks(parts_text)
+    for i, p in enumerate(ps, 1):
+        await asyncio.to_thread(push, f"Essay {i}/{len(ps)}", p)
+        await asyncio.sleep(1.2)
+
+
+async def latest(request):
+    if not authed(request): return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return JSONResponse({"essay": ESSAYS[-1] if ESSAYS else None})
+
+
 async def exam(request):
     if not authed(request): return JSONResponse({"error": "unauthorized"}, status_code=401)
     b = await request.json()
@@ -171,6 +215,10 @@ async def exam(request):
     s = b.get("sub")
     if isinstance(s, dict) and s.get("endpoint"):          # phone sends its push address with every request: no server-side registration needed
         SUBS.write_text(json.dumps([x for x in subs() if x.get("endpoint") != s["endpoint"]] + [s]))
+    if b.get("mode") == "essay":
+        jid = str(int(time.time() * 1000))
+        asyncio.create_task(essay_job(images, note, jid))
+        return JSONResponse({"reply": "Writing the full answer. It arrives on your watch in numbered parts in about a minute, and shows here too.", "id": jid, "secs": 0})
     t = time.time()
     drafts = await draft(images, note)
     reply = fmt(drafts)
@@ -230,7 +278,7 @@ async def warm(request):
 
 async def health(request): return JSONResponse({"ok": True, "mock": MOCK})
 
-app = Starlette(routes=[Route("/", page), Route("/exam", exam, methods=["POST"]), Route("/sub", sub, methods=["POST"]), Route("/vapid", vapid), Route("/debug", debug),
+app = Starlette(routes=[Route("/", page), Route("/exam", exam, methods=["POST"]), Route("/sub", sub, methods=["POST"]), Route("/vapid", vapid), Route("/debug", debug), Route("/latest", latest),
                         Route("/sw.js", sw), Route("/icon.png", icon), Route("/manifest.json", manifest), Route("/health", health), Route("/warm", warm)])
 
 if __name__ == "__main__":
