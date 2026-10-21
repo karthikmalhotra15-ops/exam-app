@@ -76,7 +76,9 @@ def img_block(d: str):
 async def ask(model, system, d, text, thinking=False):
     kw = dict(model=model, system=system, max_tokens=14000 if thinking else 1500,
               messages=[{"role": "user", "content": [img_block(d), {"type": "text", "text": text}]}])
-    if thinking: kw["thinking"] = {"type": "enabled", "budget_tokens": 8000}
+    if thinking:
+        kw["thinking"] = {"type": "adaptive"}
+        kw["extra_body"] = {"output_config": {"effort": "high"}}
     r = await client().messages.create(**kw)
     return "".join(b.text for b in r.content if b.type == "text").strip()
 
@@ -107,7 +109,12 @@ def fmt(drafts):
 
 async def verify(images, drafts, note):
     res = await check(images, drafts, note)
-    bad = [(i + 1, r) for i, r in enumerate(res) if r and not r.upper().startswith("ALL GOOD")]
+    failed = [r for r in res if r.startswith("CHECK FAILED")]
+    bad = [(i + 1, r) for i, r in enumerate(res) if r and not r.upper().startswith("ALL GOOD") and not r.startswith("CHECK FAILED")]
+    if failed:
+        await asyncio.to_thread(push, "Check didn't run", "Double-check failed on %d page(s), verify those answers yourself" % len(failed))
+    if failed and not bad:
+        return
     with open(DATA / "log.md", "a") as f:
         f.write(f"\n## {time.strftime('%Y-%m-%d %H:%M')} ({len(images)} pages)\n{fmt(drafts)}\nCHECK:\n" + "\n".join(res) + "\n")
     if not bad:
