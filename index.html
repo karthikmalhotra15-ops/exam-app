@@ -24,6 +24,24 @@ h1{font-size:17px;font-weight:600;margin:0;letter-spacing:.2px}
 #go{flex:1;background:#e8eaed;color:#0b0d10;border-color:#e8eaed}
 #go:disabled{opacity:.4}
 #bell{height:32px;font-size:12px;padding:0 10px;border-radius:8px}
+
+/* polish 2026-10-23 */
+:root{--ac:#4fb3bf}
+html,body{background:radial-gradient(70% 40% at 50% -8%,rgba(79,179,191,.14),transparent 70%),#0a0e12}
+h1{font-size:19px;font-weight:650;letter-spacing:.3px}
+h1::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#bfe6ec,var(--ac) 60%,#1d5c66);margin-right:9px;box-shadow:0 0 10px rgba(79,179,191,.55)}
+.chip,#out,#hist details{border-radius:14px;border-color:#1f2a31;background:#10161b}
+#empty{border:1px dashed #26333a;border-radius:14px;text-align:center;padding:34px 18px;margin-top:6px;color:#7d8d97}
+#out{border-left:3px solid var(--ac);font-size:15.5px}
+#seg{background:#10161b;border:1px solid #1f2a31;border-radius:12px;padding:4px;gap:4px;margin-top:10px}
+#seg button{border:0;background:transparent;height:34px;border-radius:9px}
+#seg button.on{background:#1b2a31;color:#e6edf1;box-shadow:inset 0 0 0 1px #274049}
+.btn{border-radius:14px;border-color:#1f2a31;background:#10161b;height:52px;transition:transform .1s}
+.btn:active{transform:scale(.97)}
+#go{background:var(--ac);border-color:var(--ac);color:#041014;font-weight:650;font-size:16px}
+#bell{background:transparent;color:#7d8d97;border-color:#1f2a31}
+footer{display:flex;gap:8px;padding-top:8px}
+#note{color:#7d8d97;font-size:13px;margin-top:10px;display:none}
 </style></head><body><div id="app">
 <header><h1>Practice test</h1><div><button class="btn" id="bell">Enable alerts</button></div></header>
 <div id="main"><div id="tray"></div><div id="empty">Add a photo of each page, in order, then send. Answers show here and are pushed to your watch.</div>
