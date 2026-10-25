@@ -257,7 +257,7 @@ async def essay_job(images, note, jid):
         else:
             content = [img_block(d) for d in images] + [{"type": "text", "text": "Student note: " + note + "\nWrite the model response."}]
             r = await asyncio.wait_for(client().messages.create(model=SMART, max_tokens=7000, system=ESSAY_SYS, thinking={"type": "adaptive"},
-                                       extra_body={"output_config": {"effort": "medium"}}, messages=[{"role": "user", "content": content}]), 420)
+                                       extra_body={"output_config": {"effort": "low"}}, messages=[{"role": "user", "content": content}]), 420)
             parts_text = "".join(b.text for b in r.content if b.type == "text").strip()
     except Exception as e:
         parts_text = "ERROR: couldn't write the answer (%s). Send it again." % type(e).__name__
