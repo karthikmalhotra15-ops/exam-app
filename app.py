@@ -154,6 +154,55 @@ async def check(images, drafts, note):
     return await asyncio.gather(*[one(d, dr) for d, dr in zip(images, drafts)])
 
 
+SOLVE_SYS = ("You solve a photographed page of a student's PRACTICE test/homework done at home. Solve EVERY question yourself from scratch, rigorously "
+             "(re-derive math, check units, sig figs, read every answer choice). Output ONLY one line per question: '<number>. <final answer>' "
+             "(multiple choice: letter plus a few words; math/chem: value with units; short response: one short sentence). No explanations, no markdown. "
+             "Unreadable question: '<number>. unreadable'. No questions on page: 'no questions'.")
+CONSENSUS_WAIT = 40   # seconds: send after 3 Opus checks finish, or at this cap with whatever finished
+
+
+def parse_answers(text):
+    out = {}
+    for ln in (text or "").splitlines():
+        m = re.match(r"\s*(\d+)[\.\):]\s*(.+)", ln)
+        if m: out.setdefault(m.group(1), m.group(2).strip())
+    return out
+
+
+def akey(a):
+    m = re.match(r"\(?([A-Ea-e])[\.\):]?(\s|$)", a)
+    return m.group(1).upper() if m else re.sub(r"[^a-z0-9.\-]", "", a.lower())[:40]
+
+
+def vote(cands):
+    """cands: list of answer strings for one question (Opus runs first, draft last). Majority wins, ties go to the earliest."""
+    groups = {}
+    for a in cands: groups.setdefault(akey(a), []).append(a)
+    return max(groups.values(), key=lambda g: (len(g), -cands.index(g[0])))[0]
+
+
+async def consensus(images, drafts, note):
+    """3 independent Opus solves per page in parallel, majority vote per question. Returns one final reply."""
+    async def solve(d):
+        try: return await asyncio.wait_for(ask(SMART, SOLVE_SYS, d, f"Student note: {note}", True), CONSENSUS_WAIT + 25)
+        except Exception as e:
+            print("solve err", type(e).__name__, flush=True); return ""
+    tasks = [[asyncio.create_task(solve(d)) for _ in range(3)] for d in images]
+    flat = [t for row in tasks for t in row]
+    await asyncio.wait(flat, timeout=CONSENSUS_WAIT)
+    pages = []
+    for i, row in enumerate(tasks):
+        runs = [parse_answers(t.result()) for t in row if t.done() and not t.cancelled() and t.result()]
+        for t in row:
+            if not t.done(): t.cancel()
+        dr = parse_answers(drafts[i])
+        if not runs:
+            pages.append(drafts[i]); continue
+        nums = sorted({n for r in runs + [dr] for n in r}, key=int)
+        pages.append("\n".join(f"{n}. " + vote([r[n] for r in runs if n in r] + ([dr[n]] if n in dr else [])) for n in nums))
+    return pages
+
+
 def fmt(drafts):
     return drafts[0] if len(drafts) == 1 else "\n\n".join(f"PAGE {i+1}\n" + d for i, d in enumerate(drafts))
 
@@ -240,12 +289,14 @@ async def exam(request):
         asyncio.create_task(essay_job(images, note, jid))
         return JSONResponse({"reply": "Writing the full answer. It arrives on your watch in numbered parts in about a minute, and shows here too.", "id": jid, "secs": 0})
     t = time.time()
+    # ONE answer only: fast draft runs as a fallback while 3 Opus solves per page vote; we send once, after the checks (about 30s)
     drafts = await draft(images, note)
-    reply = fmt(drafts)
+    pages = drafts if MOCK else await consensus(images, drafts, note)
+    reply = fmt(pages)
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, push, "Answers", reply)   # background: never make the screen wait on Apple
     loop.run_in_executor(None, sms, "Answers: " + reply)
-    asyncio.create_task(verify(images, drafts, note))
+    with open(DATA / "log.md", "a") as f: f.write(f"\n## {time.strftime('%Y-%m-%d %H:%M')} ({len(images)} pages, 3x Opus consensus)\n{reply}\n")
     return JSONResponse({"reply": reply, "secs": round(time.time() - t, 1)})
 
 
