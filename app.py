@@ -296,6 +296,7 @@ async def exam(request):
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, push, "Answers", reply)   # background: never make the screen wait on Apple
     loop.run_in_executor(None, sms, "Answers: " + reply)
+    loop.run_in_executor(None, mail, "Answers " + time.strftime("%H:%M"), reply)
     with open(DATA / "log.md", "a") as f: f.write(f"\n## {time.strftime('%Y-%m-%d %H:%M')} ({len(images)} pages, 3x Opus consensus)\n{reply}\n")
     return JSONResponse({"reply": reply, "secs": round(time.time() - t, 1)})
 
