@@ -3,3 +3,4 @@ starlette
 uvicorn
 pywebpush
 pillow
+huggingface_hub

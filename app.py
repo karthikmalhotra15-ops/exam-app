@@ -350,7 +350,16 @@ async def warm(request):
 
 async def health(request): return JSONResponse({"ok": True, "mock": MOCK})
 
-app = Starlette(routes=[Route("/", page), Route("/exam", exam, methods=["POST"]), Route("/sub", sub, methods=["POST"]), Route("/vapid", vapid), Route("/debug", debug), Route("/latest", latest),
+import cjarvis, contextlib
+
+
+@contextlib.asynccontextmanager
+async def _life(_):
+    try: await cjarvis.start()
+    except Exception as e: print("cjarvis start failed", e, flush=True)
+    yield
+
+app = Starlette(lifespan=_life, routes=cjarvis.ROUTES + [Route("/", page), Route("/exam", exam, methods=["POST"]), Route("/sub", sub, methods=["POST"]), Route("/vapid", vapid), Route("/debug", debug), Route("/latest", latest),
                         Route("/sw.js", sw), Route("/icon.png", icon), Route("/manifest.json", manifest), Route("/health", health), Route("/warm", warm)])
 
 if __name__ == "__main__":
