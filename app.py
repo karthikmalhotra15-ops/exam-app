@@ -126,7 +126,7 @@ def img_block(d: str):
 
 async def ask(model, system, d, text, thinking=False):
     kw = dict(model=model, system=system, max_tokens=14000 if thinking else 1500,
-              messages=[{"role": "user", "content": [img_block(d), {"type": "text", "text": text}]}])
+              messages=[{"role": "user", "content": ([img_block(d)] if d else []) + [{"type": "text", "text": text}]}])
     if thinking:
         kw["thinking"] = {"type": "adaptive"}
         kw["extra_body"] = {"output_config": {"effort": "high"}}
@@ -255,7 +255,7 @@ async def essay_job(images, note, jid):
     try:
         if MOCK: parts_text = "Thesis: mock essay.\n\nBody: mock."
         else:
-            content = [img_block(d) for d in images] + [{"type": "text", "text": "Student note: " + note + "\nWrite the model response."}]
+            content = [img_block(d) for d in images if d] + [{"type": "text", "text": "Student note: " + note + "\nWrite the model response."}]
             r = await asyncio.wait_for(client().messages.create(model=SMART, max_tokens=7000, system=ESSAY_SYS, thinking={"type": "adaptive"},
                                        extra_body={"output_config": {"effort": "low"}}, messages=[{"role": "user", "content": content}]), 420)
             parts_text = "".join(b.text for b in r.content if b.type == "text").strip()
@@ -279,8 +279,12 @@ async def exam(request):
     if not authed(request): return JSONResponse({"error": "unauthorized"}, status_code=401)
     b = await request.json()
     images = [d for d in (b.get("images") or [])[:MAX_PAGES] if isinstance(d, str) and d.startswith("data:image")]
-    if not images: return JSONResponse({"error": "no images"}, status_code=400)
+    typed = (b.get("text") or "").strip()[:6000]
+    if not images and not typed: return JSONResponse({"error": "no images or text"}, status_code=400)
     note = (b.get("note") or "")[:300]
+    if not images:                                         # typed question(s), no photo: treat the text as one page
+        images = [None]
+        note = "The student typed these question(s) instead of sending a photo:\n" + typed
     s = b.get("sub")
     if isinstance(s, dict) and s.get("endpoint"):          # phone sends its push address with every request: no server-side registration needed
         SUBS.write_text(json.dumps([x for x in subs() if x.get("endpoint") != s["endpoint"]] + [s]))

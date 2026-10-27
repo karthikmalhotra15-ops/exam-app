@@ -42,12 +42,14 @@ h1::before{content:"";display:inline-block;width:10px;height:10px;border-radius:
 #bell{background:transparent;color:#7d8d97;border-color:#1f2a31}
 footer{display:flex;gap:8px;padding-top:8px}
 #note{color:#7d8d97;font-size:13px;margin-top:10px;display:none}
+#typed{padding-top:8px}#qt{width:100%;border-radius:14px;border:1px solid #1f2a31;background:#10161b;color:#e8eaed;font:16px -apple-system,system-ui,sans-serif;padding:12px 14px;resize:none;outline:none}#qt:focus{border-color:#274049}
 </style></head><body><div id="app">
 <header><h1>Practice test</h1><div><button class="btn" id="bell">Enable alerts</button></div></header>
 <div id="main"><div id="tray"></div><div id="empty">Add a photo of each page, in order, then send. Answers show here and are pushed to your watch.</div>
 <div id="out"></div><div id="note"></div><div id="hist"></div></div>
 <input id="cam" type="file" accept="image/*" capture="environment" hidden>
 <input id="pick" type="file" accept="image/*" multiple hidden>
+<div id="typed"><textarea id="qt" rows="3" placeholder="Or type the question here (no photo needed)"></textarea></div>
 <div id="seg"><button id="mq">Quiz</button><button id="me">Essay / FRQ</button></div>
 <footer>
 <button class="btn" id="camb" aria-label="Camera"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
@@ -61,17 +63,18 @@ function shrink(f){return new Promise(res=>{const im=new Image(),url=URL.createO
  c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(url);res(c.toDataURL('image/jpeg',.85))};im.src=url})}
 function draw(){const t=$('tray');t.innerHTML='';files.forEach((d,i)=>{const c=document.createElement('div');c.className='chip';c.innerHTML='<img src="'+d+'"><b>Page '+(i+1)+'</b>';
  const x=document.createElement('button');x.innerHTML='<svg viewBox="0 0 24 24" width="12" height="12" stroke="#fff" stroke-width="2.4" fill="none"><path d="M6 6l12 12M18 6L6 18"/></svg>';x.onclick=()=>{files.splice(i,1);draw()};c.appendChild(x);t.appendChild(c)});
- $('empty').style.display=files.length?'none':'block';$('go').disabled=!files.length;$('go').textContent=files.length?'Send '+files.length+' page'+(files.length>1?'s':''):'Send'}
+ $('empty').style.display=files.length?'none':'block';const hasT=!!$('qt').value.trim();$('go').disabled=!files.length&&!hasT;$('go').textContent=files.length?'Send '+files.length+' page'+(files.length>1?'s':''):(hasT?'Send text':'Send')}
+$('qt').oninput=draw;
 function setMode(m){MODE=m;localStorage.mode=m;$('mq').className=m=='quiz'?'on':'';$('me').className=m=='essay'?'on':''}$('mq').onclick=()=>setMode('quiz');$('me').onclick=()=>setMode('essay');setMode(MODE);
 for(const [b,i] of [['camb','cam'],['pickb','pick']]){$(b).onclick=()=>$(i).click();$(i).onchange=async e=>{for(const f of e.target.files)files.push(await shrink(f));e.target.value='';draw()}}
 $('go').onclick=async()=>{if(!K){$('note').style.display='block';$('note').textContent='No key on this page. Open the setup link again.';return}
  const b=$('go');b.disabled=true;b.textContent='Working';$('out').style.display='none';
  try{let sub=null;try{const reg=await navigator.serviceWorker.ready;sub=(await reg.pushManager.getSubscription())}catch(e){}
- const r=await fetch('/exam',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify({images:files,sub:sub?sub.toJSON():null,mode:MODE})});
+ const r=await fetch('/exam',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify({images:files,text:$('qt').value,sub:sub?sub.toJSON():null,mode:MODE})});
   if(r.status==401){$('note').style.display='block';$('note').textContent='Wrong key. Open the setup link again.';return}
   const j=await r.json();$('out').textContent=j.reply||j.error;$('out').style.display='block';if(j.reply){const H=JSON.parse(localStorage.hist||'[]');H.unshift({t:new Date().toLocaleString([], {weekday:'short',hour:'numeric',minute:'2-digit'}),a:j.reply});localStorage.hist=JSON.stringify(H.slice(0,10));drawHist()}
-  files=[];draw();if(j.id){$('note').style.display='block';$('note').textContent='Writing the full answer...';pollEssay(j.id)}else{$('note').style.display='block';$('note').textContent='Answered in '+j.secs+'s after 3 Opus checks. This is the final answer.'}}
- catch(e){$('note').style.display='block';$('note').textContent='Could not reach the server.'}finally{b.textContent=files.length?'Send '+files.length+' pages':'Send';b.disabled=!files.length}};
+  files=[];$('qt').value='';draw();if(j.id){$('note').style.display='block';$('note').textContent='Writing the full answer...';pollEssay(j.id)}else{$('note').style.display='block';$('note').textContent='Answered in '+j.secs+'s after 3 Opus checks. This is the final answer.'}}
+ catch(e){$('note').style.display='block';$('note').textContent='Could not reach the server.'}finally{draw()}};
 async function pollEssay(id){for(let i=0;i<70;i++){await new Promise(r=>setTimeout(r,4000));try{const r=await fetch('/latest',{headers:{'x-token':K}});const j=await r.json();if(j.essay&&j.essay.id==id){$('out').textContent=j.essay.text;$('out').style.display='block';$('note').textContent='Full answer ready. Parts were also sent to your watch.';const H=JSON.parse(localStorage.hist||'[]');H.unshift({t:j.essay.t+' essay',a:j.essay.text});localStorage.hist=JSON.stringify(H.slice(0,10));drawHist();return}}catch(e){}}$('note').textContent='Still working. Check your watch or reopen the app.'}
 function drawHist(){const H=JSON.parse(localStorage.hist||'[]');$('hist').innerHTML=H.map(x=>'<details><summary>'+x.t+'</summary><pre></pre></details>').join('');$('hist').querySelectorAll('pre').forEach((p,i)=>p.textContent=H[i].a)}drawHist();
 function b64(s){const p='='.repeat((4-s.length%4)%4),r=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)))}
