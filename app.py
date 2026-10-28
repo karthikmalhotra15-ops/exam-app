@@ -222,6 +222,7 @@ async def verify(images, drafts, note):
     else:
         fixes = "\n".join(f"PAGE {i}: " + r for i, r in bad)
         await asyncio.to_thread(push, "Fix these answers", fixes)
+        await asyncio.to_thread(mail, "Fix these answers " + time.strftime("%H:%M"), fixes)
         await asyncio.to_thread(sms, "FIX: " + fixes)
 
 

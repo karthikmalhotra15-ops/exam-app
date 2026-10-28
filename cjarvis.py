@@ -163,11 +163,16 @@ async def chat(r):
     if not text: return JSONResponse({"reply": ""})
     ua = r.headers.get("user-agent", "")
     watch = bool(b.get("async") or r.headers.get("x-async") or (ua and "Mozilla" not in ua))
+    async def mail_only(rep):
+        try: await asyncio.to_thread(_main().mail, ("Jarvis: " + text.replace("\n", " "))[:70], rep)
+        except Exception as e: print("mail fail", e, flush=True)
     if not watch:
-        return JSONResponse({"reply": await _answer(text, False), "mood": "calm", "audio": ""})
+        rep = await _answer(text, False); asyncio.create_task(mail_only(rep))
+        return JSONResponse({"reply": rep, "mood": "calm", "audio": ""})
     task = asyncio.create_task(_answer(text, True))
     try:
-        return JSONResponse({"reply": await asyncio.wait_for(asyncio.shield(task), 9), "mood": "calm", "audio": ""})
+        rep = await asyncio.wait_for(asyncio.shield(task), 9); asyncio.create_task(mail_only(rep))
+        return JSONResponse({"reply": rep, "mood": "calm", "audio": ""})
     except asyncio.TimeoutError:
         async def finish(): await deliver(text, await task)
         asyncio.create_task(finish())
