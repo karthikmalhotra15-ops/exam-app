@@ -23,7 +23,7 @@ NOTE = ("[CLOUD MODE: you are Jarvis running on a server, not on Karthik's lapto
 
 WATCH_NOTE = ("[WATCH MODE: you are Jarvis answering Karthik's Apple Watch / email from a server (Mac is off). His questions are usually school questions. "
               "OUTPUT FORMAT, strictly: only math lines, no sentences, no verbs like 'add/divide/subtract', no 'check', no restating the question. Example for 'solve 2x+3=11':\n2x = 8\nx = 4\nANSWER: x = 4\nFor multiple choice give the work lines then 'ANSWER: B'. Non-math questions: one line, max 12 words. "
-              "LAYOUT like a clean board: one step per line, every line under 20 characters because the watch screen is tiny; if a step is longer, split it onto two lines at a + or - sign, never mid-term. Keep the same variable order each line. Put a blank line before the final answer, then the final answer alone on its own line(s), e.g. 'x = π/3, π, 5π/3'. Write exponents as ² ³, fractions as a/b, π not pi. Example:\n2cos²x + cos x - 1 = 0\n(2cos x - 1)\n(cos x + 1) = 0\ncos x = 1/2\ncos x = -1\n\nx = π/3, π, 5π/3\n"
+              "LAYOUT like a clean board: one step per line, every line under 20 characters because the watch screen is tiny; if a step is longer, split it onto two lines at a + or - sign, never mid-term. Keep the same variable order each line. Put a blank line before the final answer, then the final answer alone on its own line(s), e.g. 'x = π/3, π, 5π/3'. Write exponents as ² ³, fractions as a/b, π not pi. Example:\n2cos²x + cos x - 1 = 0\n(2cos x - 1)\n×(cos x + 1) = 0\ncos x = 1/2\ncos x = -1\n\nx = π/3, π, 5π/3\n"
               "Use plain text, no markdown headers. You can't touch his Mac. Never send/delete/post/spend.] ")
 
 
@@ -33,7 +33,7 @@ def _main():
 
 async def deliver(text: str, reply: str):
     m = _main()
-    try: await asyncio.to_thread(m.push, "Jarvis", reply.replace("\n", " ")[:230])
+    try: await asyncio.to_thread(m.push, "Jarvis", reply[:600])
     except Exception as e: print("watch push fail", e, flush=True)
     try: await asyncio.to_thread(m.mail, ("Jarvis: " + text.replace("\n", " "))[:70], reply)
     except Exception as e: print("watch mail fail", e, flush=True)
@@ -107,12 +107,12 @@ async def ask(text: str, watch: bool = False) -> str:
     if _client is None:
         import anthropic; _client = anthropic.AsyncAnthropic(max_retries=2)
     mem = MEMFILE.read_text()[:30000] if MEMFILE.exists() else ""
-    hist = rj(HIST, [])[-12:]
+    hist = [] if watch else rj(HIST, [])[-12:]   # watch answers stay clean: no old chat bleeding into the format
     r = await _client.messages.create(model=MODEL, max_tokens=1500 if watch else 600, system=(WATCH_NOTE if watch else NOTE) + "\nWhat you know about Karthik:\n" + mem,
                                       messages=hist + [{"role": "user", "content": text}])
     out = "".join(b.text for b in r.content if b.type == "text").strip() or "done."
     add_spend(r.usage.input_tokens, r.usage.output_tokens)
-    wj(HIST, (hist + [{"role": "user", "content": text}, {"role": "assistant", "content": out}])[-24:])
+    if not watch: wj(HIST, (hist + [{"role": "user", "content": text}, {"role": "assistant", "content": out}])[-24:])
     return out
 
 
