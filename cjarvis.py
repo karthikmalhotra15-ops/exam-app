@@ -115,10 +115,15 @@ async def ask(text: str, watch: bool = False) -> str:
         import anthropic; _client = anthropic.AsyncAnthropic(max_retries=2)
     mem = "" if watch else (MEMFILE.read_text()[:30000] if MEMFILE.exists() else "")   # watch: tiny prompt = faster
     hist = [] if watch else rj(HIST, [])[-12:]   # watch answers stay clean: no old chat bleeding into the format
-    r = await _client.messages.create(model=MODEL, max_tokens=700 if watch else 600, system=(WATCH_NOTE if watch else NOTE + "\nWhat you know about Karthik:\n" + mem),
-                                      messages=hist + [{"role": "user", "content": text}])
-    out = "".join(b.text for b in r.content if b.type == "text").strip() or "done."
-    add_spend(r.usage.input_tokens, r.usage.output_tokens)
+    out = ""
+    for attempt in range(3):
+        r = await _client.messages.create(model=MODEL, max_tokens=700 if watch else 600, system=(WATCH_NOTE if watch else NOTE + "\nWhat you know about Karthik:\n" + mem),
+                                          messages=hist + [{"role": "user", "content": text}])
+        out = "".join(b.text for b in r.content if b.type == "text").strip()
+        add_spend(r.usage.input_tokens, r.usage.output_tokens)
+        if out: break
+        print("EMPTY reply", attempt, r.stop_reason, [b.type for b in r.content], flush=True)
+    out = out or ("couldn't get that one, send it again" if watch else "done.")
     if not watch: wj(HIST, (hist + [{"role": "user", "content": text}, {"role": "assistant", "content": out}])[-24:])
     return out
 
