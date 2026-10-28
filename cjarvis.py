@@ -117,7 +117,7 @@ async def ask(text: str, watch: bool = False) -> str:
     hist = [] if watch else rj(HIST, [])[-12:]   # watch answers stay clean: no old chat bleeding into the format
     out = ""
     for attempt in range(3):
-        r = await _client.messages.create(model=MODEL, max_tokens=2000 if watch else 600, **({"thinking": {"type": "disabled"}} if watch else {}), system=(WATCH_NOTE if watch else NOTE + "\nWhat you know about Karthik:\n" + mem),
+        r = await _client.messages.create(model=MODEL, max_tokens=2000 if watch else 600, system=(WATCH_NOTE if watch else NOTE + "\nWhat you know about Karthik:\n" + mem),
                                           messages=hist + [{"role": "user", "content": text}])
         out = "".join(b.text for b in r.content if b.type == "text").strip()
         add_spend(r.usage.input_tokens, r.usage.output_tokens)
