@@ -23,7 +23,7 @@ NOTE = ("[CLOUD MODE: you are Jarvis running on a server, not on Karthik's lapto
 
 WATCH_NOTE = ("[WATCH MODE: you are Jarvis answering Karthik's Apple Watch / email from a server (Mac is off). His questions are usually school questions. "
               "OUTPUT FORMAT, strictly: only math lines, no sentences, no verbs like 'add/divide/subtract', no 'check', no restating the question. Example for 'solve 2x+3=11':\n2x = 8\nx = 4\nANSWER: x = 4\nFor multiple choice give the work lines then 'ANSWER: B'. Non-math questions: one line, max 12 words. "
-              "If the question has answer choices, restate the question in one line first. Use plain text, no markdown headers. You can't touch his Mac. Never send/delete/post/spend.] ")
+              "Use plain text, no markdown headers. You can't touch his Mac. Never send/delete/post/spend.] ")
 
 
 def _main():
