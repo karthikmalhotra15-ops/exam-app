@@ -36,10 +36,13 @@ def _main():
 
 async def deliver(text: str, reply: str):
     m = _main()
-    try: await asyncio.to_thread(m.push, "Jarvis", reply[:600])
-    except Exception as e: print("watch push fail", e, flush=True)
-    try: await asyncio.to_thread(m.mail, ("Jarvis: " + text.replace("\n", " "))[:70], reply)
-    except Exception as e: print("watch mail fail", e, flush=True)
+    async def p():
+        try: await asyncio.to_thread(m.push, "Jarvis", reply[:600])
+        except Exception as e: print("watch push fail", e, flush=True)
+    async def ml():
+        try: await asyncio.to_thread(m.mail, ("Jarvis: " + text.replace("\n", " "))[:70], reply)
+        except Exception as e: print("watch mail fail", e, flush=True)
+    await asyncio.gather(p(), ml())     # mail and push go out at the same moment
 
 
 def rj(f, d):
@@ -109,9 +112,9 @@ async def ask(text: str, watch: bool = False) -> str:
     global _client
     if _client is None:
         import anthropic; _client = anthropic.AsyncAnthropic(max_retries=2)
-    mem = MEMFILE.read_text()[:30000] if MEMFILE.exists() else ""
+    mem = "" if watch else (MEMFILE.read_text()[:30000] if MEMFILE.exists() else "")   # watch: tiny prompt = faster
     hist = [] if watch else rj(HIST, [])[-12:]   # watch answers stay clean: no old chat bleeding into the format
-    r = await _client.messages.create(model=MODEL, max_tokens=1500 if watch else 600, system=(WATCH_NOTE if watch else NOTE) + "\nWhat you know about Karthik:\n" + mem,
+    r = await _client.messages.create(model=MODEL, max_tokens=700 if watch else 600, system=(WATCH_NOTE if watch else NOTE + "\nWhat you know about Karthik:\n" + mem),
                                       messages=hist + [{"role": "user", "content": text}])
     out = "".join(b.text for b in r.content if b.type == "text").strip() or "done."
     add_spend(r.usage.input_tokens, r.usage.output_tokens)
@@ -155,7 +158,7 @@ async def reminder_loop():
 
 async def _answer(text, watch):
     try:
-        out = handle_tags(await ask(text, watch), text); await asyncio.to_thread(hf_push, "history.json", "reminders.json", "mac_queue.json", "usage.json")
+        out = handle_tags(await ask(text, watch), text); asyncio.get_running_loop().run_in_executor(None, hf_push, "history.json", "reminders.json", "mac_queue.json", "usage.json")   # sync in background: the reply/mail must not wait on it
         return out
     except Exception as e:
         print("chat err", e, flush=True); return "something broke on my end, try again."
