@@ -21,6 +21,23 @@ NOTE = ("[CLOUD MODE: you are Jarvis running on a server, not on Karthik's lapto
         "Reply like he texts: casual, 1-3 short lines, no markdown.] ")
 
 
+WATCH_NOTE = ("[WATCH MODE: you are Jarvis answering Karthik's Apple Watch / email from a server (Mac is off). His questions are usually school questions. "
+              "Plain, clear, neutral tone: NO slang, no hype, no filler. For math/science show the work in short numbered steps and state the final answer clearly. "
+              "If the question has answer choices, restate the question in one line first. Use plain text, no markdown headers. You can't touch his Mac. Never send/delete/post/spend.] ")
+
+
+def _main():
+    import sys; return sys.modules.get("__main__")
+
+
+async def deliver(text: str, reply: str):
+    m = _main()
+    try: await asyncio.to_thread(m.push, "Jarvis", reply.replace("\n", " ")[:230])
+    except Exception as e: print("watch push fail", e, flush=True)
+    try: await asyncio.to_thread(m.mail, ("Jarvis: " + text.replace("\n", " "))[:70], reply)
+    except Exception as e: print("watch mail fail", e, flush=True)
+
+
 def rj(f, d):
     try: return json.loads(f.read_text())
     except Exception: return d
@@ -82,7 +99,7 @@ def add_spend(i, o):
 
 
 _client = None
-async def ask(text: str) -> str:
+async def ask(text: str, watch: bool = False) -> str:
     if MOCK: return f"[mock] you said: {text[:80]}"
     if spend() >= CAP: return f"i hit the ${CAP:.0f} monthly cap so i'm paused till next month, or raise it."
     global _client
@@ -90,7 +107,7 @@ async def ask(text: str) -> str:
         import anthropic; _client = anthropic.AsyncAnthropic(max_retries=2)
     mem = MEMFILE.read_text()[:30000] if MEMFILE.exists() else ""
     hist = rj(HIST, [])[-12:]
-    r = await _client.messages.create(model=MODEL, max_tokens=600, system=NOTE + "\nWhat you know about Karthik:\n" + mem,
+    r = await _client.messages.create(model=MODEL, max_tokens=1500 if watch else 600, system=(WATCH_NOTE if watch else NOTE) + "\nWhat you know about Karthik:\n" + mem,
                                       messages=hist + [{"role": "user", "content": text}])
     out = "".join(b.text for b in r.content if b.type == "text").strip() or "done."
     add_spend(r.usage.input_tokens, r.usage.output_tokens)
@@ -132,15 +149,29 @@ async def reminder_loop():
         await asyncio.sleep(20)
 
 
+async def _answer(text, watch):
+    try:
+        out = handle_tags(await ask(text, watch), text); await asyncio.to_thread(hf_push, "history.json", "reminders.json", "mac_queue.json", "usage.json")
+        return out
+    except Exception as e:
+        print("chat err", e, flush=True); return "something broke on my end, try again."
+
+
 async def chat(r):
     if not authed(r): return JSONResponse({"error": "unauthorized"}, status_code=401)
     b = await r.json(); text = (b.get("text") or "").strip()[:2000]
     if not text: return JSONResponse({"reply": ""})
+    ua = r.headers.get("user-agent", "")
+    watch = bool(b.get("async") or r.headers.get("x-async") or (ua and "Mozilla" not in ua))
+    if not watch:
+        return JSONResponse({"reply": await _answer(text, False), "mood": "calm", "audio": ""})
+    task = asyncio.create_task(_answer(text, True))
     try:
-        reply = handle_tags(await ask(text), text); await asyncio.to_thread(hf_push, "history.json", "reminders.json", "mac_queue.json", "usage.json")
-    except Exception as e:
-        print("chat err", e, flush=True); reply = "something broke on my end, try again."
-    return JSONResponse({"reply": reply, "mood": "calm", "audio": ""})
+        return JSONResponse({"reply": await asyncio.wait_for(asyncio.shield(task), 9), "mood": "calm", "audio": ""})
+    except asyncio.TimeoutError:
+        async def finish(): await deliver(text, await task)
+        asyncio.create_task(finish())
+        return JSONResponse({"reply": "on it, i'll send the answer to your notifications and mail", "mood": "calm", "audio": ""})
 
 
 async def ping(r): return JSONResponse({"ok": authed(r), "cloud": True}, status_code=200 if authed(r) else 401)
