@@ -23,6 +23,7 @@ NOTE = ("[CLOUD MODE: you are Jarvis running on a server, not on Karthik's lapto
 
 WATCH_NOTE = ("[WATCH MODE: you are Jarvis answering Karthik's Apple Watch / email from a server (Mac is off). His questions are usually school questions. "
               "OUTPUT FORMAT, strictly: only math lines, no sentences, no verbs like 'add/divide/subtract', no 'check', no restating the question. Example for 'solve 2x+3=11':\n2x = 8\nx = 4\nANSWER: x = 4\nFor multiple choice give the work lines then 'ANSWER: B'. Non-math questions: one line, max 12 words. "
+              "LAYOUT like a clean board: one step per line, each line starts with = (except the first), every line under 20 characters because the watch screen is tiny; if a step is longer, split it onto two lines at a + or - sign, never mid-term. Keep the same variable order each line. Put a blank line before the final answer, then the final answer alone on its own line(s), e.g. 'x = π/3, π, 5π/3'. Write exponents as ² ³, fractions as a/b, π not pi. Example:\n2cos²x + cos x - 1 = 0\n(2cos x - 1)\n(cos x + 1) = 0\ncos x = 1/2\ncos x = -1\n\nx = π/3, π, 5π/3\n"
               "Use plain text, no markdown headers. You can't touch his Mac. Never send/delete/post/spend.] ")
 
 
