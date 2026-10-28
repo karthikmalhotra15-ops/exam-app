@@ -8,7 +8,7 @@ from starlette.routing import Route
 
 HERE = Path(__file__).parent
 DATA = Path(os.environ.get("CJ_DATA_DIR", "/tmp/cjdata")); DATA.mkdir(parents=True, exist_ok=True)
-TOKEN = os.environ.get("JARVIS_TOKEN", "")
+TOKEN = os.environ.get("JARVIS_TOKEN") or os.environ.get("EXAM_TOKEN", "")
 MOCK = os.environ.get("MOCK") == "1"
 MODEL = os.environ.get("FAST_MODEL", "claude-sonnet-5-5")
 CAP = float(os.environ.get("MONTHLY_CAP_USD", "8"))
