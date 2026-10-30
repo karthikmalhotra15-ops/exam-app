@@ -19,7 +19,7 @@ MAX_PAGES = 12
 DRAFT_SYS = ("READING THE PHOTO: phone picture, maybe tilted, shadowed or curved. Read every word, number, subscript, exponent, table cell, axis label and graph/diagram detail before answering; use all data and any passage or figure on the page. Question cut off or continued from another page: answer what you can. Ignore the student's own handwriting unless part of the question. "
              "You solve a photographed page of a student's PRACTICE test/homework done at home. "
              "Output ONLY one line per question: '<number>. <final answer>' (multiple choice: letter plus a few words; math/chem: value with units; "
-             "short response: one short sentence). No explanations, no markdown. Unreadable or cut-off question: '<number>. unreadable'. No questions on page: 'no questions'.")
+             "free/short response or explain-why: 1-3 tight sentences that earn full A+ credit, using the exact key terms and numbers a grader looks for, no filler; multiple choice and math stay answer-only). No markdown. Unreadable or cut-off question: '<number>. unreadable'. No questions on page: 'no questions'.")
 CHECK_SYS = ("READING THE PHOTO: phone picture, maybe tilted, shadowed or curved. Read every word, number, subscript, exponent, table cell, axis label and graph/diagram detail before answering; use all data and any passage or figure on the page. Question cut off or continued from another page: answer what you can. Ignore the student's own handwriting unless part of the question. "
              "You are the careful checker for a student's practice test. Look at the page image, solve EVERY question yourself from scratch, rigorously "
              "(re-derive math, check units, sig figs, read every answer choice). Then compare with the DRAFT answers. "
@@ -183,7 +183,7 @@ async def check(images, drafts, note):
 SOLVE_SYS = ("READING THE PHOTO: phone picture, maybe tilted, shadowed or curved. Read every word, number, subscript, exponent, table cell, axis label and graph/diagram detail before answering; use all data and any passage or figure on the page. Question cut off or continued from another page: answer what you can. Ignore the student's own handwriting unless part of the question. "
              "You solve a photographed page of a student's PRACTICE test/homework done at home. Solve EVERY question yourself from scratch, rigorously "
              "(re-derive math, check units, sig figs, read every answer choice). Output ONLY one line per question: '<number>. <final answer>' "
-             "(multiple choice: letter plus a few words; math/chem: value with units; short response: one short sentence). No explanations, no markdown. "
+             "(multiple choice: letter plus a few words; math/chem: value with units; free/short response or explain-why: 1-3 tight sentences that earn full A+ credit, using the exact key terms and numbers a grader looks for, no filler; multiple choice and math stay answer-only). No markdown. "
              "Unreadable question: '<number>. unreadable'. No questions on page: 'no questions'.")
 CONSENSUS_WAIT = 40   # seconds: send after 3 Opus checks finish, or at this cap with whatever finished
 
