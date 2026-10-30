@@ -47,7 +47,7 @@ def mail(subject: str, body: str):
     if MOCK or not (url and sec): return
     try:
         import urllib.request
-        req = urllib.request.Request(url, json.dumps({"secret": sec, "subject": subject, "body": body}).encode(), {"content-type": "text/plain"})
+        req = urllib.request.Request(url, json.dumps({"secret": sec, "subject": subject + " | " + " / ".join(body.split("\n"))[:150], "body": body, "text": body, "message": body, "htmlBody": body.replace("\n", "<br>")}).encode(), {"content-type": "text/plain"})
         r = urllib.request.urlopen(req, timeout=40).read(20).decode(errors="ignore")
         SMSLOG.append({"t": time.strftime("%H:%M:%S"), "mail": r.strip() == "ok", "resp": r.strip()[:20]})
     except Exception as e:
