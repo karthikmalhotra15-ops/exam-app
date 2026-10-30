@@ -16,10 +16,12 @@ FAST, SMART = os.environ.get("FAST_MODEL", "claude-sonnet-5-5"), os.environ.get(
 SUBS = DATA / "subs.json"
 MAX_PAGES = 12
 
-DRAFT_SYS = ("You solve a photographed page of a student's PRACTICE test/homework done at home. "
+DRAFT_SYS = ("READING THE PHOTO: phone picture, maybe tilted, shadowed or curved. Read every word, number, subscript, exponent, table cell, axis label and graph/diagram detail before answering; use all data and any passage or figure on the page. Question cut off or continued from another page: answer what you can. Ignore the student's own handwriting unless part of the question. "
+             "You solve a photographed page of a student's PRACTICE test/homework done at home. "
              "Output ONLY one line per question: '<number>. <final answer>' (multiple choice: letter plus a few words; math/chem: value with units; "
              "short response: one short sentence). No explanations, no markdown. Unreadable or cut-off question: '<number>. unreadable'. No questions on page: 'no questions'.")
-CHECK_SYS = ("You are the careful checker for a student's practice test. Look at the page image, solve EVERY question yourself from scratch, rigorously "
+CHECK_SYS = ("READING THE PHOTO: phone picture, maybe tilted, shadowed or curved. Read every word, number, subscript, exponent, table cell, axis label and graph/diagram detail before answering; use all data and any passage or figure on the page. Question cut off or continued from another page: answer what you can. Ignore the student's own handwriting unless part of the question. "
+             "You are the careful checker for a student's practice test. Look at the page image, solve EVERY question yourself from scratch, rigorously "
              "(re-derive math, check units, sig figs, read every answer choice). Then compare with the DRAFT answers. "
              "Output ONLY lines for answers that are WRONG: '<number>. should be <correct answer> (<5-10 word reason>)'. "
              "If every draft answer is right, output exactly: ALL GOOD")
@@ -120,8 +122,32 @@ def client():
     return _client
 
 
+_ENH = {}
+def enhance(d: str) -> str:
+    """Fix a phone photo of a page: EXIF rotation, flatten shadows, boost contrast, sharpen, scale to ~2400px. Falls back to the original on any error."""
+    try:
+        import io
+        from PIL import Image, ImageOps, ImageFilter
+        raw = base64.b64decode(d.split(",", 1)[1])
+        im = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
+        long = max(im.size)
+        if long < 900: return d                          # tiny image: leave alone
+        k = 2400 / long
+        if k != 1: im = im.resize((round(im.width * k), round(im.height * k)), Image.LANCZOS)
+        im = ImageOps.autocontrast(im, cutoff=1)
+        im = im.filter(ImageFilter.UnsharpMask(radius=2, percent=90, threshold=3))
+        out = io.BytesIO(); im.save(out, "JPEG", quality=90)
+        return "data:image/jpeg;base64," + base64.b64encode(out.getvalue()).decode()
+    except Exception as e:
+        print("enhance err", type(e).__name__, e, flush=True); return d
+
+
 def img_block(d: str):
-    return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": d.split(",", 1)[1]}}
+    e = _ENH.get(d)
+    if e is None:
+        e = _ENH[d] = enhance(d)
+        if len(_ENH) > 40: _ENH.pop(next(iter(_ENH)))
+    return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": e.split(",", 1)[1]}}
 
 
 async def ask(model, system, d, text, thinking=False):
@@ -154,7 +180,8 @@ async def check(images, drafts, note):
     return await asyncio.gather(*[one(d, dr) for d, dr in zip(images, drafts)])
 
 
-SOLVE_SYS = ("You solve a photographed page of a student's PRACTICE test/homework done at home. Solve EVERY question yourself from scratch, rigorously "
+SOLVE_SYS = ("READING THE PHOTO: phone picture, maybe tilted, shadowed or curved. Read every word, number, subscript, exponent, table cell, axis label and graph/diagram detail before answering; use all data and any passage or figure on the page. Question cut off or continued from another page: answer what you can. Ignore the student's own handwriting unless part of the question. "
+             "You solve a photographed page of a student's PRACTICE test/homework done at home. Solve EVERY question yourself from scratch, rigorously "
              "(re-derive math, check units, sig figs, read every answer choice). Output ONLY one line per question: '<number>. <final answer>' "
              "(multiple choice: letter plus a few words; math/chem: value with units; short response: one short sentence). No explanations, no markdown. "
              "Unreadable question: '<number>. unreadable'. No questions on page: 'no questions'.")
