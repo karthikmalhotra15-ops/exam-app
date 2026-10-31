@@ -363,8 +363,8 @@ async def icon(request): return Response((HERE / "icon.png").read_bytes(), media
 async def manifest(request):
     k = request.query_params.get("k", "")
     start = "/?k=" + k if k and authed(request) else "/"
-    return JSONResponse({"name": "Friday", "short_name": "Friday", "start_url": start, "id": "/", "display": "standalone", "background_color": "#0b0d10", "theme_color": "#0b0d10",
-                         "icons": [{"src": "/icon.png", "sizes": "512x512", "type": "image/png"}]})
+    return JSONResponse({"name": "Friday", "short_name": "Friday", "start_url": start, "id": "/", "display": "standalone", "background_color": "#06080f", "theme_color": "#06080f",
+                         "icons": [{"src": "/icon.png", "sizes": "1024x1024", "type": "image/png"}]})
 _warm = {"t": 0}
 
 
