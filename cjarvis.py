@@ -94,6 +94,8 @@ def authed(r) -> bool:
     recent = [t for t in FAILS.get(ip, []) if time.time() - t < 600]
     if len(recent) >= 10 or not TOKEN: return False
     good = secrets.compare_digest(r.headers.get("x-jarvis-token", r.query_params.get("k", "")), TOKEN)
+    ex = os.environ.get("EXAM_TOKEN", "")
+    if not good and ex and r.headers.get("x-token"): good = secrets.compare_digest(r.headers["x-token"], ex)   # combined app sends one key
     if not good: FAILS[ip] = recent + [time.time()]
     return good
 
