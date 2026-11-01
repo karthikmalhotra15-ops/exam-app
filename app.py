@@ -293,10 +293,22 @@ async def consensus(images, drafts_fut, note):
 
 
 def push_all(reply):
-    ps = chunks(reply, 800)
-    for i, p in enumerate(ps, 1):
-        push("Answers" if len(ps) == 1 else f"Answers {i}/{len(ps)}", p)   # strictly in order, one at a time
-        if i < len(ps): time.sleep(2.5)
+    """One notification per question (5a-5d together, 6 with all its parts together), strictly in order."""
+    groups = []
+    for blk in re.split(r"\n\s*\n", reply or ""):
+        blk = blk.strip()
+        if not blk: continue
+        m = re.match(r"\(?(?:Q(?:uestion)?\s*)?(\d+)[a-z]?[\.\):]", blk, re.I)
+        k = m.group(1) if m else None
+        if groups and (k is None or groups[-1][0] == k): groups[-1][1].append(blk)
+        elif k is None and not groups: groups.append(["x", [blk]])
+        else: groups.append([k, [blk]])
+    if len(groups) > 1 and groups[0][0] == "x": groups[0][0] = None
+    items = [(k, "\n".join(v)) for k, v in groups]
+    items = [(k, t) for k, t in items if not (k is None and re.fullmatch(r"PAGE \d+", t.strip(), re.I))] or items
+    for i, (k, t) in enumerate(items, 1):
+        push("Answers" if len(items) == 1 else (f"Q{k}" if k else f"Answers {i}/{len(items)}"), t)
+        if i < len(items): time.sleep(2.5)
 
 
 def fmt(drafts):
