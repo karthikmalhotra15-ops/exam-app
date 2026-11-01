@@ -72,10 +72,14 @@ def ntfy(title: str, body: str):
     """Backup alert channel: ntfy.sh -> ntfy iPhone app -> watch. Doesn't depend on Safari web push or Gmail."""
     if MOCK or not NTFY: return
     try:
-        import urllib.request
+        import urllib.request, urllib.error
         req = urllib.request.Request("https://ntfy.sh/" + NTFY, body[:3900].encode(), {"Title": title.encode("ascii", "ignore").decode() or "Answers", "Priority": "high", "Tags": "pencil"})
-        urllib.request.urlopen(req, timeout=15).read()
-        SMSLOG.append({"t": time.strftime("%H:%M:%S"), "ntfy": True})
+        for i in range(5):
+            try: urllib.request.urlopen(req, timeout=15).read(); break
+            except urllib.error.HTTPError as e:
+                if e.code != 429 or i == 4: raise
+                time.sleep(3 * (i + 1))
+        SMSLOG.append({"t": time.strftime("%H:%M:%S"), "ntfy": True, "tries": i + 1})
     except Exception as e:
         SMSLOG.append({"t": time.strftime("%H:%M:%S"), "ntfy": False, "err": str(e)[:100]})
 
