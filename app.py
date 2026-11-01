@@ -246,9 +246,10 @@ def parse_answers(text):
     """number -> full block (answer line + its '- ' work lines)."""
     out, cur = {}, None
     for ln in (text or "").splitlines():
-        m = re.match(r"\s*(\d+)[\.\):]\s*(.+)", ln)
+        ln = ln.replace("*", "").replace("`", "")
+        m = re.match(r"\s*(?:Q(?:uestion)?\s*)?\(?(\d+[a-z]?)[\.\):]\s*(.+)", ln, re.I)
         if m:
-            cur = m.group(1)
+            cur = m.group(1).lower()
             out.setdefault(cur, m.group(2).strip())
         elif cur and ln.strip().startswith("-") and out.get(cur) is not None:
             out[cur] += "\n  " + ln.strip()
@@ -286,7 +287,7 @@ async def consensus(images, drafts_fut, note):
         dr = parse_answers(drafts[i])
         if not runs:
             pages.append(drafts[i]); continue
-        nums = sorted({n for r in runs + [dr] for n in r}, key=int)
+        nums = sorted({n for r in runs + [dr] for n in r}, key=lambda k: (int(re.match(r"\d+", k).group()), k))
         pages.append("\n\n".join(f"{n}. " + vote([r[n] for r in runs if n in r] + ([dr[n]] if n in dr else [])) for n in nums))
     return pages
 
