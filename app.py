@@ -125,7 +125,7 @@ def sms(body: str):
 
 def push(title: str, body: str):
     t0 = time.time()
-    threading.Thread(target=ntfy, args=(title, body), daemon=True).start()
+    nt = threading.Thread(target=ntfy, args=(title, body), daemon=True); nt.start()
     try:
         return _push(title, body, t0)
     finally:
@@ -247,9 +247,9 @@ def parse_answers(text):
     out, cur = {}, None
     for ln in (text or "").splitlines():
         ln = ln.replace("*", "").replace("`", "")
-        m = re.match(r"\s*(?:Q(?:uestion)?\s*)?\(?(\d+[a-z]?)[\.\):]\s*(.+)", ln, re.I)
+        m = re.match(r"\s*(?:Q(?:uestion)?\s*)?\(?(\d+)[\.\):]\s*(.+)", ln, re.I)
         if m:
-            cur = m.group(1).lower()
+            cur = m.group(1)
             out.setdefault(cur, m.group(2).strip())
         elif cur and ln.strip().startswith("-") and out.get(cur) is not None:
             out[cur] += "\n  " + ln.strip()
@@ -287,7 +287,7 @@ async def consensus(images, drafts_fut, note):
         dr = parse_answers(drafts[i])
         if not runs:
             pages.append(drafts[i]); continue
-        nums = sorted({n for r in runs + [dr] for n in r}, key=lambda k: (int(re.match(r"\d+", k).group()), k))
+        nums = sorted({n for r in runs + [dr] for n in r}, key=int)
         pages.append("\n\n".join(f"{n}. " + vote([r[n] for r in runs if n in r] + ([dr[n]] if n in dr else [])) for n in nums))
     return pages
 
@@ -295,8 +295,8 @@ async def consensus(images, drafts_fut, note):
 def push_all(reply):
     ps = chunks(reply, 800)
     for i, p in enumerate(ps, 1):
-        push("Answers" if len(ps) == 1 else f"Answers {i}/{len(ps)}", p)
-        if i < len(ps): time.sleep(1.2)
+        push("Answers" if len(ps) == 1 else f"Answers {i}/{len(ps)}", p)   # strictly in order, one at a time
+        if i < len(ps): time.sleep(2.5)
 
 
 def fmt(drafts):
