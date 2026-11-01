@@ -185,7 +185,7 @@ SOLVE_SYS = ("READING THE PHOTO: phone picture, maybe tilted, shadowed or curved
              "(re-derive math, check units, sig figs, read every answer choice). Output ONLY one line per question: '<number>. <final answer>' "
              "(multiple choice: letter plus a few words; math/chem: value with units; free/short response or explain-why: 1-3 tight sentences that earn full A+ credit, using the exact key terms and numbers a grader looks for, no filler; multiple choice and math stay answer-only). No markdown. "
              "Unreadable question: '<number>. unreadable'. No questions on page: 'no questions'.")
-CONSENSUS_WAIT = 40   # seconds: send after 3 Opus checks finish, or at this cap with whatever finished
+CONSENSUS_WAIT = 40   # seconds: send after 2 Opus checks finish, or at this cap with whatever finished
 
 
 def parse_answers(text):
@@ -209,12 +209,12 @@ def vote(cands):
 
 
 async def consensus(images, drafts, note):
-    """3 independent Opus solves per page in parallel, majority vote per question. Returns one final reply."""
+    """2 independent Opus solves per page in parallel, majority vote per question. Returns one final reply."""
     async def solve(d):
         try: return await asyncio.wait_for(ask(SMART, SOLVE_SYS, d, f"Student note: {note}", True), CONSENSUS_WAIT + 25)
         except Exception as e:
             print("solve err", type(e).__name__, flush=True); return ""
-    tasks = [[asyncio.create_task(solve(d)) for _ in range(3)] for d in images]
+    tasks = [[asyncio.create_task(solve(d)) for _ in range(2)] for d in images]
     flat = [t for row in tasks for t in row]
     await asyncio.wait(flat, timeout=CONSENSUS_WAIT)
     pages = []
@@ -321,7 +321,7 @@ async def exam(request):
         asyncio.create_task(essay_job(images, note, jid))
         return JSONResponse({"reply": "Writing the full answer. It arrives on your watch in numbered parts in about a minute, and shows here too.", "id": jid, "secs": 0})
     t = time.time()
-    # ONE answer only: fast draft runs as a fallback while 3 Opus solves per page vote; we send once, after the checks (about 30s)
+    # ONE answer only: fast draft runs as a fallback while 2 Opus solves per page vote; we send once, after the checks (about 30s)
     drafts = await draft(images, note)
     pages = drafts if MOCK else await consensus(images, drafts, note)
     reply = fmt(pages)
@@ -329,7 +329,7 @@ async def exam(request):
     loop.run_in_executor(None, push, "Answers", reply)   # background: never make the screen wait on Apple
     loop.run_in_executor(None, sms, "Answers: " + reply)
     loop.run_in_executor(None, mail, "Answers " + time.strftime("%H:%M"), reply)
-    with open(DATA / "log.md", "a") as f: f.write(f"\n## {time.strftime('%Y-%m-%d %H:%M')} ({len(images)} pages, 3x Opus consensus)\n{reply}\n")
+    with open(DATA / "log.md", "a") as f: f.write(f"\n## {time.strftime('%Y-%m-%d %H:%M')} ({len(images)} pages, 2x Opus consensus)\n{reply}\n")
     return JSONResponse({"reply": reply, "secs": round(time.time() - t, 1)})
 
 
