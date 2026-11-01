@@ -82,6 +82,11 @@ h1::before{width:24px;height:24px;margin-right:10px;vertical-align:-7px;backgrou
 #cf:focus-within{border-color:rgba(155,123,255,.65);box-shadow:0 0 0 3px rgba(155,123,255,.14),0 10px 44px rgba(120,90,255,.3)}
 #ct{background:transparent;border:0;height:40px;color:var(--tx)}#ct::placeholder{color:#6f6b88}
 #cs,#go{background:linear-gradient(135deg,var(--a),var(--b));color:#fff;box-shadow:0 4px 18px rgba(120,90,255,.5)}
+#ccam{width:40px;height:40px;flex:none;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;padding:0;transition:transform .1s}#ccam:active{transform:scale(.9)}
+#ccam svg{width:21px;height:21px;stroke:#cfc8ff;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#cprev{display:none;padding:8px 4px 0}#cprev.on{display:flex}#cprev div{position:relative}#cprev img{height:64px;border-radius:12px;border:1px solid var(--line);display:block}
+#cprev button{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:#2a2540;color:#fff;font-size:13px;line-height:22px;padding:0}
+.m img{display:block;max-width:200px;max-height:220px;border-radius:12px;margin-bottom:6px}
 #cs{width:40px;height:40px;border-radius:50%}#cs:active,#go:active{transform:scale(.9)}
 #go{border:0;border-radius:99px}
 .btn{background:var(--glass);border-color:var(--line);border-radius:99px;color:var(--tx);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
@@ -104,7 +109,7 @@ h1::before{width:24px;height:24px;margin-right:10px;vertical-align:-7px;backgrou
 </style></head><body><canvas id="sky"></canvas><div class="aur a1"></div><div class="aur a2"></div><div class="aur a3"></div><div id="app">
 <header><h1>Friday</h1><div><button class="btn" id="bell">Enable alerts</button></div></header>
 <div id="tabs"><button id="tc">Chat</button><button id="te">Exam</button></div>
-<div id="vc"><div id="log"><div id="hero"><div class="big"></div><div id="hi"></div><div id="sub"></div><div id="hchips"><span>quiz me</span><span>help with homework</span><span>explain this</span><span>make a study plan</span></div></div></div><form id="cf"><input id="ct" placeholder="Message Friday" autocomplete="off" enterkeyhint="send"><button id="cs" type="submit" aria-label="Send">↑</button></form></div>
+<div id="vc"><div id="log"><div id="hero"><div class="big"></div><div id="hi"></div><div id="sub"></div><div id="hchips"><span>quiz me</span><span>help with homework</span><span>explain this</span><span>make a study plan</span></div></div></div><div id="cprev"></div><form id="cf"><button id="ccam" type="button" aria-label="Camera"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg></button><input id="ccf" type="file" accept="image/*" capture="environment" hidden><input id="ct" placeholder="Message Friday" autocomplete="off" enterkeyhint="send"><button id="cs" type="submit" aria-label="Send">↑</button></form></div>
 <div id="ve" style="display:none">
 <div id="main"><div id="tray"></div><div id="empty">Add a photo of each page, in order, then send. Answers show here and are pushed to your watch.</div>
 <div id="out"></div><div id="note"></div><div id="hist"></div></div>
@@ -153,13 +158,18 @@ if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').then
 function tab(t){localStorage.tab=t;$('vc').className=t=='c'?'on':'';$('ve').className=t=='e'?'on':'';$('ve').style.display=t=='e'?'flex':'none';$('tc').className=t=='c'?'on':'';$('te').className=t=='e'?'on':'';document.querySelector('h1').textContent=t=='c'?'Friday':'Practice test'}
 $('tc').onclick=()=>tab('c');$('te').onclick=()=>tab('e');
 let CH=[];try{CH=JSON.parse(localStorage.chat||'[]')}catch(e){}
-function bub(c,t){if($('hero'))$('hero').className='gone';const d=document.createElement('div');d.className='m '+c;d.textContent=t;$('log').appendChild(d);$('log').scrollTop=1e9;return d}
+function bub(c,t,img){if($('hero'))$('hero').className='gone';const d=document.createElement('div');d.className='m '+c;d.textContent=t;if(img){const i=document.createElement('img');i.src=img;d.prepend(i)}$('log').appendChild(d);$('log').scrollTop=1e9;return d}
 CH.forEach(x=>bub(x[0],x[1]));if(CH.length)$('hero').className='gone';
 function save(c,t){CH.push([c,t]);localStorage.chat=JSON.stringify(CH.slice(-40))}
-$('cf').onsubmit=async e=>{e.preventDefault();const t=$('ct').value.trim();if(!t)return;$('ct').value='';bub('me',t);save('me',t);
+let CIMG='';
+function small(f){return new Promise(res=>{const im=new Image(),url=URL.createObjectURL(f);im.onload=()=>{const k=Math.min(1,1600/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(url);res(c.toDataURL('image/jpeg',.85))};im.onerror=()=>{URL.revokeObjectURL(url);res('')};im.src=url})}
+function cprev(){const p=$('cprev');p.innerHTML='';p.className=CIMG?'on':'';if(!CIMG)return;const w=document.createElement('div');w.innerHTML='<img src="'+CIMG+'"><button type="button" aria-label="Remove">✕</button>';w.querySelector('button').onclick=()=>{CIMG='';cprev()};p.appendChild(w)}
+$('ccam').onclick=()=>$('ccf').click();
+$('ccf').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;CIMG=await small(f);cprev();$('ct').placeholder='Add a note or just send';$('ct').focus()};
+$('cf').onsubmit=async e=>{e.preventDefault();const t=$('ct').value.trim(),img=CIMG;if(!t&&!img)return;$('ct').value='';CIMG='';cprev();$('ct').placeholder='Message Friday';bub('me',t,img);save('me',img?'📷 '+t:t);
  if(!K){bub('j','No key on this page. Open the setup link again.');return}
  $('cs').disabled=true;const w=bub('j','...');
- try{const r=await fetch('/chat',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify({text:t})});
+ try{const r=await fetch('/chat',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify(img?{text:t,image:img}:{text:t})});
   if(r.status==401){w.textContent='Wrong key. Open the setup link again.';return}
   const j=await r.json();w.textContent=j.reply||'(no reply)';save('j',w.textContent)}
  catch(e){w.textContent='Could not reach the server.'}finally{$('cs').disabled=false;$('log').scrollTop=1e9}};

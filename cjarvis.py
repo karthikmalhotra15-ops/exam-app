@@ -108,9 +108,18 @@ def add_spend(i, o):
     u = rj(USAGE, {}); k = time.strftime("%Y-%m"); u[k] = u.get(k, 0.0) + i * PRICE_IN + o * PRICE_OUT; wj(USAGE, u)
 
 
+def user_content(text, image):
+    # chat photo: data URL from the phone camera button -> image block + text
+    if not image: return text
+    m = re.match(r"data:(image/[a-z]+);base64,(.+)", image, re.S)
+    if not m: return text
+    return [{"type": "image", "source": {"type": "base64", "media_type": m.group(1), "data": m.group(2)}},
+            {"type": "text", "text": text or "what's in this photo? help me with it."}]
+
+
 _client = None
-async def ask(text: str, watch: bool = False) -> str:
-    if MOCK: return f"[mock] you said: {text[:80]}"
+async def ask(text: str, watch: bool = False, image: str = "") -> str:
+    if MOCK: return f"[mock] you said: {text[:80]}" + (f" +photo {len(image)}b" if image else "")
     if spend() >= CAP: return f"i hit the ${CAP:.0f} monthly cap so i'm paused till next month, or raise it."
     global _client
     if _client is None:
@@ -120,14 +129,14 @@ async def ask(text: str, watch: bool = False) -> str:
     out = ""
     for attempt in range(3):
         mdl = [MODEL, os.environ.get("SMART_MODEL", "claude-opus-5-5"), MODEL][attempt]
-        r = await _client.messages.create(model=mdl, max_tokens=(2000 + 2500 * attempt) if watch else 600, system=(WATCH_NOTE if watch else NOTE + "\nWhat you know about Karthik:\n" + mem),
-                                          messages=hist + [{"role": "user", "content": text}])
+        r = await _client.messages.create(model=mdl, max_tokens=(2000 + 2500 * attempt) if watch else (1500 if image else 600), system=(WATCH_NOTE if watch else NOTE + "\nWhat you know about Karthik:\n" + mem),
+                                          messages=hist + [{"role": "user", "content": user_content(text, image)}])
         out = "".join(b.text for b in r.content if b.type == "text").strip()
         add_spend(r.usage.input_tokens, r.usage.output_tokens)
         if out: break
         print("EMPTY reply", attempt, r.stop_reason, [b.type for b in r.content], flush=True)
     out = out or ("couldn't get that one, send it again" if watch else "done.")
-    if not watch: wj(HIST, (hist + [{"role": "user", "content": text}, {"role": "assistant", "content": out}])[-24:])
+    if not watch: wj(HIST, (hist + [{"role": "user", "content": ("[sent a photo] " if image else "") + text}, {"role": "assistant", "content": out}])[-24:])
     return out
 
 
@@ -165,9 +174,9 @@ async def reminder_loop():
         await asyncio.sleep(20)
 
 
-async def _answer(text, watch):
+async def _answer(text, watch, image=""):
     try:
-        out = handle_tags(await ask(text, watch), text); asyncio.get_running_loop().run_in_executor(None, hf_push, "history.json", "reminders.json", "mac_queue.json", "usage.json")   # sync in background: the reply/mail must not wait on it
+        out = handle_tags(await ask(text, watch, image), text); asyncio.get_running_loop().run_in_executor(None, hf_push, "history.json", "reminders.json", "mac_queue.json", "usage.json")   # sync in background: the reply/mail must not wait on it
         return out
     except Exception as e:
         print("chat err", e, flush=True); return "something broke on my end, try again."
@@ -176,14 +185,16 @@ async def _answer(text, watch):
 async def chat(r):
     if not authed(r): return JSONResponse({"error": "unauthorized"}, status_code=401)
     b = await r.json(); text = (b.get("text") or "").strip()[:2000]
-    if not text: return JSONResponse({"reply": ""})
+    image = b.get("image") or ""
+    if len(image) > 7_000_000: return JSONResponse({"reply": "that photo's too big, try again."})
+    if not text and not image: return JSONResponse({"reply": ""})
     ua = r.headers.get("user-agent", "")
     watch = bool(b.get("async") or r.headers.get("x-async") or (ua and "Mozilla" not in ua))
     async def mail_only(rep):
         try: await asyncio.to_thread(_main().mail, ("Jarvis: " + text.replace("\n", " "))[:70], rep)
         except Exception as e: print("mail fail", e, flush=True)
     if not watch:
-        rep = await _answer(text, False); asyncio.create_task(mail_only(rep))
+        rep = await _answer(text, False, image); asyncio.create_task(mail_only(rep))
         return JSONResponse({"reply": rep, "mood": "calm", "audio": ""})
     task = asyncio.create_task(_answer(text, True))
     try:
