@@ -1,6 +1,7 @@
 """Exam server (cloud). Runs without the Mac. Photos of a practice test in -> fast parallel draft answers back + push to phone/watch,
 then Opus re-solves every page and pushes ONLY corrections.
 Env: ANTHROPIC_API_KEY, EXAM_TOKEN, VAPID_PRIVATE (PEM text), VAPID_PUBLIC, DATA_DIR, MOCK=1 (no API calls, for plumbing tests)."""
+import threading
 import os, re, json, time, asyncio, base64
 from pathlib import Path
 from starlette.applications import Starlette
@@ -35,6 +36,48 @@ CHECK_SYS += " For each wrong answer add 1-3 indented '- ' work lines (equations
 def authed(r) -> bool:
     import secrets
     return bool(TOKEN) and secrets.compare_digest(r.headers.get("x-token", r.query_params.get("k", "")), TOKEN)
+
+
+def _hf(fn, *a, **k):
+    tok, repo = os.environ.get("HF_TOKEN"), os.environ.get("HF_DATA_REPO")
+    if not (tok and repo): return None
+    import huggingface_hub as h
+    return fn(h, tok, repo, *a, **k)
+
+
+def save_subs(lst):
+    """Write alert devices locally AND to the private HF dataset so Render restarts can't wipe them."""
+    old = SUBS.read_text() if SUBS.exists() else ""
+    new = json.dumps(lst); SUBS.write_text(new)
+    if new != old:
+        try: _hf(lambda h, t, r: h.HfApi(token=t).upload_file(path_or_fileobj=new.encode(), path_in_repo="exam_subs.json", repo_id=r, repo_type="dataset"))
+        except Exception as e: print("subs upload failed", e, flush=True)
+
+
+def restore_state():
+    """On boot: pull saved alert devices + ntfy topic back from HF."""
+    global NTFY
+    for name in ("exam_subs.json", "ntfy_topic"):
+        try:
+            data = Path(_hf(lambda h, t, r: h.hf_hub_download(r, name, repo_type="dataset", token=t, force_download=True))).read_text().strip()
+            if name == "ntfy_topic": NTFY = data
+            elif not subs(): SUBS.write_text(data)
+        except Exception as e: print("restore", name, e, flush=True)
+
+
+NTFY = os.environ.get("NTFY_TOPIC", "")
+
+
+def ntfy(title: str, body: str):
+    """Backup alert channel: ntfy.sh -> ntfy iPhone app -> watch. Doesn't depend on Safari web push or Gmail."""
+    if MOCK or not NTFY: return
+    try:
+        import urllib.request
+        req = urllib.request.Request("https://ntfy.sh/" + NTFY, body[:3900].encode(), {"Title": title.encode("ascii", "ignore").decode() or "Answers", "Priority": "high", "Tags": "pencil"})
+        urllib.request.urlopen(req, timeout=15).read()
+        SMSLOG.append({"t": time.strftime("%H:%M:%S"), "ntfy": True})
+    except Exception as e:
+        SMSLOG.append({"t": time.strftime("%H:%M:%S"), "ntfy": False, "err": str(e)[:100]})
 
 
 def subs() -> list:
@@ -78,6 +121,7 @@ def sms(body: str):
 
 def push(title: str, body: str):
     t0 = time.time()
+    threading.Thread(target=ntfy, args=(title, body), daemon=True).start()
     try:
         return _push(title, body, t0)
     finally:
@@ -112,7 +156,7 @@ def _push(title: str, body: str, t0=0):
                 errs.append("jarvis " + type(e).__name__ + " " + str(e)[:120])
     except Exception as e:
         errs.append("jarvis cfg " + str(e)[:80])
-    SUBS.write_text(json.dumps(keep))
+    save_subs(keep)
     PUSHLOG.append({"t": time.strftime("%H:%M:%S"), "title": title, "subs": len(keep) + len([1 for _ in errs if "404" in _ or "410" in _]), "sent": n, "errs": errs})
     del PUSHLOG[:-10]
     return n
@@ -334,7 +378,7 @@ async def exam(request):
         note = "The student typed these question(s) instead of sending a photo:\n" + typed
     s = b.get("sub")
     if isinstance(s, dict) and s.get("endpoint"):          # phone sends its push address with every request: no server-side registration needed
-        SUBS.write_text(json.dumps([x for x in subs() if x.get("endpoint") != s["endpoint"]] + [s]))
+        save_subs([x for x in subs() if x.get("endpoint") != s["endpoint"]] + [s])
     if b.get("mode") == "essay":
         jid = str(int(time.time() * 1000))
         asyncio.create_task(essay_job(images, note, jid))
@@ -361,12 +405,12 @@ async def sub(request):
     s = await request.json()
     print("sub registered", s.get("endpoint", "")[:40], flush=True)
     cur = [x for x in subs() if x.get("endpoint") != s.get("endpoint")] + [s]
-    SUBS.write_text(json.dumps(cur)); return JSONResponse({"ok": True})
+    await asyncio.to_thread(save_subs, cur); return JSONResponse({"ok": True})
 
 
 async def debug(request):
     if not authed(request): return JSONResponse({"error": "unauthorized"}, status_code=401)
-    return JSONResponse({"subs": len(subs()), "endpoints": [s.get("endpoint", "")[:50] for s in subs()], "pushlog": PUSHLOG, "subtry": SUBTRY, "smslog": SMSLOG})
+    return JSONResponse({"subs": len(subs()), "ntfy": bool(NTFY), "endpoints": [s.get("endpoint", "")[:50] for s in subs()], "pushlog": PUSHLOG, "subtry": SUBTRY, "smslog": SMSLOG})
 
 
 async def vapid(request): return JSONResponse({"key": os.environ.get("VAPID_PUBLIC", "")})
@@ -412,6 +456,8 @@ import cjarvis, contextlib
 
 @contextlib.asynccontextmanager
 async def _life(_):
+    try: await asyncio.to_thread(restore_state)
+    except Exception as e: print("restore failed", e, flush=True)
     try: await cjarvis.start()
     except Exception as e: print("cjarvis start failed", e, flush=True)
     yield
