@@ -26,6 +26,11 @@ CHECK_SYS = ("READING THE PHOTO: phone picture, maybe tilted, shadowed or curved
              "Output ONLY lines for answers that are WRONG: '<number>. should be <correct answer> (<5-10 word reason>)'. "
              "If every draft answer is right, output exactly: ALL GOOD")
 
+WATCH_FMT = (" OUTPUT FORMAT (overrides the one-line rule above): for EACH question write the first line '<number>. <final answer>', then for any math/science/calc/stats question 2-5 work lines each starting with '- ' showing the key steps as equations only "
+             "(no sentences, each line under 28 characters, split long ones across lines). Multiple choice: add one '- ' line with the key reason (under 28 chars). Short response: answer only, no work lines. No markdown, no blank lines inside a question.")
+DRAFT_SYS += WATCH_FMT
+CHECK_SYS += " For each wrong answer add 1-3 indented '- ' work lines (equations only, under 28 chars each)."
+
 
 def authed(r) -> bool:
     import secrets
@@ -151,7 +156,7 @@ def img_block(d: str):
 
 
 async def ask(model, system, d, text, thinking=False):
-    kw = dict(model=model, system=system, max_tokens=14000 if thinking else 1500,
+    kw = dict(model=model, system=system, max_tokens=14000 if thinking else 2500,
               messages=[{"role": "user", "content": ([img_block(d)] if d else []) + [{"type": "text", "text": text}]}])
     if thinking:
         kw["thinking"] = {"type": "adaptive"}
@@ -185,18 +190,25 @@ SOLVE_SYS = ("READING THE PHOTO: phone picture, maybe tilted, shadowed or curved
              "(re-derive math, check units, sig figs, read every answer choice). Output ONLY one line per question: '<number>. <final answer>' "
              "(multiple choice: letter plus a few words; math/chem: value with units; free/short response or explain-why: 1-3 tight sentences that earn full A+ credit, using the exact key terms and numbers a grader looks for, no filler; multiple choice and math stay answer-only). No markdown. "
              "Unreadable question: '<number>. unreadable'. No questions on page: 'no questions'.")
-CONSENSUS_WAIT = 40   # seconds: send after 2 Opus checks finish, or at this cap with whatever finished
+SOLVE_SYS += WATCH_FMT
+CONSENSUS_WAIT = 50   # seconds: send after 2 Opus checks finish, or at this cap with whatever finished
 
 
 def parse_answers(text):
-    out = {}
+    """number -> full block (answer line + its '- ' work lines)."""
+    out, cur = {}, None
     for ln in (text or "").splitlines():
         m = re.match(r"\s*(\d+)[\.\):]\s*(.+)", ln)
-        if m: out.setdefault(m.group(1), m.group(2).strip())
+        if m:
+            cur = m.group(1)
+            out.setdefault(cur, m.group(2).strip())
+        elif cur and ln.strip().startswith("-") and out.get(cur) is not None:
+            out[cur] += "\n  " + ln.strip()
     return out
 
 
 def akey(a):
+    a = a.split("\n")[0]
     m = re.match(r"\(?([A-Ea-e])[\.\):]?(\s|$)", a)
     return m.group(1).upper() if m else re.sub(r"[^a-z0-9.\-]", "", a.lower())[:40]
 
@@ -226,8 +238,15 @@ async def consensus(images, drafts, note):
         if not runs:
             pages.append(drafts[i]); continue
         nums = sorted({n for r in runs + [dr] for n in r}, key=int)
-        pages.append("\n".join(f"{n}. " + vote([r[n] for r in runs if n in r] + ([dr[n]] if n in dr else [])) for n in nums))
+        pages.append("\n\n".join(f"{n}. " + vote([r[n] for r in runs if n in r] + ([dr[n]] if n in dr else [])) for n in nums))
     return pages
+
+
+def push_all(reply):
+    ps = chunks(reply, 800)
+    for i, p in enumerate(ps, 1):
+        push("Answers" if len(ps) == 1 else f"Answers {i}/{len(ps)}", p)
+        if i < len(ps): time.sleep(1.2)
 
 
 def fmt(drafts):
@@ -326,7 +345,7 @@ async def exam(request):
     pages = drafts if MOCK else await consensus(images, drafts, note)
     reply = fmt(pages)
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, push, "Answers", reply)   # background: never make the screen wait on Apple
+    loop.run_in_executor(None, push_all, reply)   # background: never make the screen wait on Apple
     loop.run_in_executor(None, sms, "Answers: " + reply)
     loop.run_in_executor(None, mail, "Answers " + time.strftime("%H:%M"), reply)
     with open(DATA / "log.md", "a") as f: f.write(f"\n## {time.strftime('%Y-%m-%d %H:%M')} ({len(images)} pages, 2x Opus consensus)\n{reply}\n")
