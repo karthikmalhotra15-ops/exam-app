@@ -1,7 +1,7 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Friday">
-<link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="/icon.png"><title>Friday</title>
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Jarvis">
+<link rel="manifest" href="/jarvis.webmanifest"><link rel="apple-touch-icon" href="/icon.png"><title>Jarvis</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100dvh;background:#0b0d10;color:#e8eaed;font:16px -apple-system,system-ui,sans-serif}
@@ -107,9 +107,9 @@ h1::before{width:24px;height:24px;margin-right:10px;vertical-align:-7px;backgrou
 #hchips span:active{background:var(--glass2);border-color:rgba(155,123,255,.6)}
 @media(prefers-reduced-motion:reduce){.aur,.big,.big:before,.big:after{animation:none}}
 </style></head><body><canvas id="sky"></canvas><div class="aur a1"></div><div class="aur a2"></div><div class="aur a3"></div><div id="app">
-<header><h1>Friday</h1><div><button class="btn" id="bell">Enable alerts</button></div></header>
-<div id="tabs"><button id="tc">Chat</button><button id="te">Exam</button></div>
-<div id="vc"><div id="log"><div id="hero"><div class="big"></div><div id="hi"></div><div id="sub"></div><div id="hchips"><span>quiz me</span><span>help with homework</span><span>explain this</span><span>make a study plan</span></div></div></div><div id="cprev"></div><form id="cf"><button id="ccam" type="button" aria-label="Camera"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg></button><input id="ccf" type="file" accept="image/*" capture="environment" hidden><input id="ct" placeholder="Message Friday" autocomplete="off" enterkeyhint="send"><button id="cs" type="submit" aria-label="Send">↑</button></form></div>
+<header><h1>Jarvis</h1><div><button class="btn" id="bell">Enable alerts</button></div></header>
+<div id="tabs" style="display:none"><button id="tc">Chat</button><button id="te">Exam</button></div>
+<div id="vc"><div id="log"><div id="hero"><div class="big"></div><div id="hi"></div><div id="sub"></div><div id="hchips"><span>quiz me</span><span>help with homework</span><span>explain this</span><span>make a study plan</span></div></div></div><div id="cprev"></div><form id="cf"><button id="ccam" type="button" aria-label="Camera"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg></button><input id="ccf" type="file" accept="image/*" capture="environment" hidden><input id="ct" placeholder="Message Jarvis" autocomplete="off" enterkeyhint="send"><button id="cs" type="submit" aria-label="Send">↑</button></form></div>
 <div id="ve" style="display:none">
 <div id="main"><div id="tray"></div><div id="empty">Add a photo of each page, in order, then send. Answers show here and are pushed to your watch.</div>
 <div id="out"></div><div id="note"></div><div id="hist"></div></div>
@@ -155,7 +155,7 @@ fetch('/health').then(()=>fetch('/warm',{headers:{'x-token':K}})).catch(()=>{});
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').then(async reg=>{try{await navigator.serviceWorker.ready;const s=await reg.pushManager.getSubscription();
  if(s&&K){const r=await fetch('/sub',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify(s)});$('bell').textContent=r.ok?'Alerts on':('Failed '+r.status)}else if(s&&!K){$('bell').textContent='No key'}}catch(e){}})}
 
-function tab(t){localStorage.tab=t;$('vc').className=t=='c'?'on':'';$('ve').className=t=='e'?'on':'';$('ve').style.display=t=='e'?'flex':'none';$('tc').className=t=='c'?'on':'';$('te').className=t=='e'?'on':'';document.querySelector('h1').textContent=t=='c'?'Friday':'Practice test'}
+function tab(t){localStorage.tab=t;$('vc').className=t=='c'?'on':'';$('ve').className=t=='e'?'on':'';$('ve').style.display=t=='e'?'flex':'none';$('tc').className=t=='c'?'on':'';$('te').className=t=='e'?'on':'';document.querySelector('h1').textContent=t=='c'?'Jarvis':'Practice test'}
 $('tc').onclick=()=>tab('c');$('te').onclick=()=>tab('e');
 let CH=[];try{CH=JSON.parse(localStorage.chat||'[]')}catch(e){}
 function bub(c,t,img){if($('hero'))$('hero').className='gone';const d=document.createElement('div');d.className='m '+c;d.textContent=t;if(img){const i=document.createElement('img');i.src=img;d.prepend(i)}$('log').appendChild(d);$('log').scrollTop=1e9;return d}
@@ -166,7 +166,7 @@ function small(f){return new Promise(res=>{const im=new Image(),url=URL.createOb
 function cprev(){const p=$('cprev');p.innerHTML='';p.className=CIMG?'on':'';if(!CIMG)return;const w=document.createElement('div');w.innerHTML='<img src="'+CIMG+'"><button type="button" aria-label="Remove">✕</button>';w.querySelector('button').onclick=()=>{CIMG='';cprev()};p.appendChild(w)}
 $('ccam').onclick=()=>$('ccf').click();
 $('ccf').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;CIMG=await small(f);cprev();$('ct').placeholder='Add a note or just send';$('ct').focus()};
-$('cf').onsubmit=async e=>{e.preventDefault();const t=$('ct').value.trim(),img=CIMG;if(!t&&!img)return;$('ct').value='';CIMG='';cprev();$('ct').placeholder='Message Friday';bub('me',t,img);save('me',img?'📷 '+t:t);
+$('cf').onsubmit=async e=>{e.preventDefault();const t=$('ct').value.trim(),img=CIMG;if(!t&&!img)return;$('ct').value='';CIMG='';cprev();$('ct').placeholder='Message Jarvis';bub('me',t,img);save('me',img?'📷 '+t:t);
  if(!K){bub('j','No key on this page. Open the setup link again.');return}
  $('cs').disabled=true;const w=bub('j','...');
  try{const r=await fetch('/chat',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify(img?{text:t,image:img}:{text:t})});
@@ -180,5 +180,5 @@ const cv=$('sky'),cx=cv.getContext('2d'),dp=Math.min(devicePixelRatio,2);let W,H
 function rs(){W=cv.width=innerWidth*dp;H=cv.height=innerHeight*dp;st=Array.from({length:60},()=>({x:Math.random()*W,y:Math.random()*H,r:(Math.random()*1.1+.3)*dp,p:Math.random()*6,s:.01+Math.random()*.02,v:.04+Math.random()*.1}))}
 rs();addEventListener('resize',rs);
 (function t(){cx.clearRect(0,0,W,H);for(const s of st){s.p+=s.s;s.y-=s.v*dp;if(s.y<0)s.y=H;cx.globalAlpha=.25+.5*Math.abs(Math.sin(s.p));cx.fillStyle='#dcd6ff';cx.beginPath();cx.arc(s.x,s.y,s.r,0,6.283);cx.fill()}if(!document.hidden)requestAnimationFrame(t);else setTimeout(t,500)})()})();
-tab(localStorage.tab||'c');
+tab('c');
 </script></body></html>

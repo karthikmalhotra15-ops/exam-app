@@ -1,0 +1,90 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Exam">
+<link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="/icon.png"><title>Exam</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100dvh;background:#0b0d10;color:#e8eaed;font:16px -apple-system,system-ui,sans-serif}
+#app{display:flex;flex-direction:column;height:100dvh;padding:env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 12px)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 0}
+h1{font-size:17px;font-weight:600;margin:0;letter-spacing:.2px}
+#st{font-size:12px;color:#8a9099}
+#main{flex:1;overflow:auto;padding-bottom:8px}
+#tray{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.chip{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;background:#161a20;border:1px solid #232830}
+.chip img{width:100%;height:100%;object-fit:cover}
+.chip b{position:absolute;left:6px;bottom:6px;font-size:11px;background:#0008;padding:2px 6px;border-radius:4px;font-weight:500}
+.chip button{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:12px;border:0;background:#000a;color:#fff;display:grid;place-items:center;padding:0}
+#empty{color:#6b7280;font-size:14px;line-height:1.5;padding:24px 4px}
+#out{margin-top:14px;padding:14px;border-radius:10px;background:#161a20;border:1px solid #232830;white-space:pre-wrap;font:15px/1.6 ui-monospace,Menlo,monospace;display:none}
+#hist details{margin-top:10px;background:#161a20;border:1px solid #232830;border-radius:10px;padding:10px 12px}#hist summary{font-size:13px;color:#8a9099}#hist pre{margin:8px 0 0;white-space:pre-wrap;font:14px/1.6 ui-monospace,Menlo,monospace}#note{margin-top:10px;font-size:13px;color:#8a9099;display:none}
+#seg{display:flex;gap:6px;padding-top:8px}#seg button{flex:1;height:34px;border-radius:8px;border:1px solid #2a303a;background:#161a20;color:#8a9099;font:500 13px -apple-system,sans-serif}#seg button.on{background:#232830;color:#e8eaed;border-color:#3a4150}footer{display:flex;gap:8px;padding-top:10px}
+.btn{height:48px;border-radius:10px;border:1px solid #2a303a;background:#161a20;color:#e8eaed;font:500 15px -apple-system,sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px}
+.btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#go{flex:1;background:#e8eaed;color:#0b0d10;border-color:#e8eaed}
+#go:disabled{opacity:.4}
+#bell{height:32px;font-size:12px;padding:0 10px;border-radius:8px}
+
+/* polish 2026-10-23 */
+:root{--ac:#4fb3bf}
+html,body{background:radial-gradient(70% 40% at 50% -8%,rgba(79,179,191,.14),transparent 70%),#0a0e12}
+h1{font-size:19px;font-weight:650;letter-spacing:.3px}
+h1::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#bfe6ec,var(--ac) 60%,#1d5c66);margin-right:9px;box-shadow:0 0 10px rgba(79,179,191,.55)}
+.chip,#out,#hist details{border-radius:14px;border-color:#1f2a31;background:#10161b}
+#empty{border:1px dashed #26333a;border-radius:14px;text-align:center;padding:34px 18px;margin-top:6px;color:#7d8d97}
+#out{border-left:3px solid var(--ac);font-size:15.5px}
+#seg{background:#10161b;border:1px solid #1f2a31;border-radius:12px;padding:4px;gap:4px;margin-top:10px}
+#seg button{border:0;background:transparent;height:34px;border-radius:9px}
+#seg button.on{background:#1b2a31;color:#e6edf1;box-shadow:inset 0 0 0 1px #274049}
+.btn{border-radius:14px;border-color:#1f2a31;background:#10161b;height:52px;transition:transform .1s}
+.btn:active{transform:scale(.97)}
+#go{background:var(--ac);border-color:var(--ac);color:#041014;font-weight:650;font-size:16px}
+#bell{background:transparent;color:#7d8d97;border-color:#1f2a31}
+footer{display:flex;gap:8px;padding-top:8px}
+#note{color:#7d8d97;font-size:13px;margin-top:10px;display:none}
+#typed{padding-top:8px}#qt{width:100%;border-radius:14px;border:1px solid #1f2a31;background:#10161b;color:#e8eaed;font:16px -apple-system,system-ui,sans-serif;padding:12px 14px;resize:none;outline:none}#qt:focus{border-color:#274049}
+</style></head><body><div id="app">
+<header><h1>Practice test</h1><div><button class="btn" id="bell">Enable alerts</button></div></header>
+<div id="main"><div id="tray"></div><div id="empty">Add a photo of each page, in order, then send. Answers show here and are pushed to your watch.</div>
+<div id="out"></div><div id="note"></div><div id="hist"></div></div>
+<input id="cam" type="file" accept="image/*" capture="environment" hidden>
+<input id="pick" type="file" accept="image/*" multiple hidden>
+<div id="typed"><textarea id="qt" rows="3" placeholder="Or type the question here (no photo needed)"></textarea></div>
+<div id="seg"><button id="mq">Quiz</button><button id="me">Essay / FRQ</button></div>
+<footer>
+<button class="btn" id="camb" aria-label="Camera"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+<button class="btn" id="pickb" aria-label="Choose photos"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 16l-5-5-8 9"/></svg></button>
+<button class="btn" id="go" disabled>Send</button></footer></div>
+<script>
+const $=i=>document.getElementById(i);let MODE=localStorage.mode||'quiz';let files=[];
+const u=new URL(location.href);if(u.searchParams.get('k')){localStorage.k=u.searchParams.get('k')}
+const K=localStorage.k||'';if(K){const m=document.querySelector('link[rel=manifest]');if(m)m.href='/manifest.json?k='+encodeURIComponent(K)}
+function shrink(f){return new Promise(res=>{const im=new Image(),url=URL.createObjectURL(f);im.onload=()=>{const k=Math.min(1,2400/Math.max(im.width,im.height)),c=document.createElement('canvas');
+ c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(url);res(c.toDataURL("image/jpeg",.9))};im.src=url})}
+function draw(){const t=$('tray');t.innerHTML='';files.forEach((d,i)=>{const c=document.createElement('div');c.className='chip';c.innerHTML='<img src="'+d+'"><b>Page '+(i+1)+'</b>';
+ const x=document.createElement('button');x.innerHTML='<svg viewBox="0 0 24 24" width="12" height="12" stroke="#fff" stroke-width="2.4" fill="none"><path d="M6 6l12 12M18 6L6 18"/></svg>';x.onclick=()=>{files.splice(i,1);draw()};c.appendChild(x);t.appendChild(c)});
+ $('empty').style.display=files.length?'none':'block';const hasT=!!$('qt').value.trim();$('go').disabled=!files.length&&!hasT;$('go').textContent=files.length?'Send '+files.length+' page'+(files.length>1?'s':''):(hasT?'Send text':'Send')}
+$('qt').oninput=draw;
+function setMode(m){MODE=m;localStorage.mode=m;$('mq').className=m=='quiz'?'on':'';$('me').className=m=='essay'?'on':''}$('mq').onclick=()=>setMode('quiz');$('me').onclick=()=>setMode('essay');setMode(MODE);
+for(const [b,i] of [['camb','cam'],['pickb','pick']]){$(b).onclick=()=>$(i).click();$(i).onchange=async e=>{for(const f of e.target.files)files.push(await shrink(f));e.target.value='';draw()}}
+$('go').onclick=async()=>{if(!K){$('note').style.display='block';$('note').textContent='No key on this page. Open the setup link again.';return}
+ const b=$('go');b.disabled=true;b.textContent='Working';$('out').style.display='none';
+ try{let sub=null;try{const reg=await navigator.serviceWorker.ready;sub=(await reg.pushManager.getSubscription())}catch(e){}
+ const r=await fetch('/exam',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify({images:files,text:$('qt').value,sub:sub?sub.toJSON():null,mode:MODE})});
+  if(r.status==401){$('note').style.display='block';$('note').textContent='Wrong key. Open the setup link again.';return}
+  const j=await r.json();$('out').textContent=j.reply||j.error;$('out').style.display='block';if(j.reply){const H=JSON.parse(localStorage.hist||'[]');H.unshift({t:new Date().toLocaleString([], {weekday:'short',hour:'numeric',minute:'2-digit'}),a:j.reply});localStorage.hist=JSON.stringify(H.slice(0,10));drawHist()}
+  files=[];$('qt').value='';draw();if(j.id){$('note').style.display='block';$('note').textContent='Writing the full answer...';pollEssay(j.id)}else{$('note').style.display='block';$('note').textContent='Answered in '+j.secs+'s after 3 Opus checks. This is the final answer.'}}
+ catch(e){$('note').style.display='block';$('note').textContent='Could not reach the server.'}finally{draw()}};
+async function pollEssay(id){for(let i=0;i<70;i++){await new Promise(r=>setTimeout(r,4000));try{const r=await fetch('/latest',{headers:{'x-token':K}});const j=await r.json();if(j.essay&&j.essay.id==id){$('out').textContent=j.essay.text;$('out').style.display='block';$('note').textContent='Full answer ready. Parts were also sent to your watch.';const H=JSON.parse(localStorage.hist||'[]');H.unshift({t:j.essay.t+' essay',a:j.essay.text});localStorage.hist=JSON.stringify(H.slice(0,10));drawHist();return}}catch(e){}}$('note').textContent='Still working. Check your watch or reopen the app.'}
+function drawHist(){const H=JSON.parse(localStorage.hist||'[]');$('hist').innerHTML=H.map(x=>'<details><summary>'+x.t+'</summary><pre></pre></details>').join('');$('hist').querySelectorAll('pre').forEach((p,i)=>p.textContent=H[i].a)}drawHist();
+function b64(s){const p='='.repeat((4-s.length%4)%4),r=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)))}
+async function alerts(){try{const reg=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;
+ if(await Notification.requestPermission()!=='granted'){$('bell').textContent='Blocked';return}
+ const k=(await (await fetch('/vapid')).json()).key;
+ const sub=(await reg.pushManager.getSubscription())||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k)});
+ const r=await fetch('/sub',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify(sub)});$('bell').textContent=r.ok?'Alerts on':('Failed '+r.status+(K?'':' no key'))}catch(e){$('bell').textContent='Err: '+String(e.message||e).slice(0,30)}}
+$('bell').onclick=alerts;
+fetch('/health').then(()=>fetch('/warm',{headers:{'x-token':K}})).catch(()=>{});
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').then(async reg=>{try{await navigator.serviceWorker.ready;const s=await reg.pushManager.getSubscription();
+ if(s&&K){const r=await fetch('/sub',{method:'POST',headers:{'content-type':'application/json','x-token':K},body:JSON.stringify(s)});$('bell').textContent=r.ok?'Alerts on':('Failed '+r.status)}else if(s&&!K){$('bell').textContent='No key'}}catch(e){}})}
+</script></body></html>

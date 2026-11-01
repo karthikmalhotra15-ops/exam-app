@@ -351,19 +351,25 @@ async def debug(request):
 
 
 async def vapid(request): return JSONResponse({"key": os.environ.get("VAPID_PUBLIC", "")})
-async def page(request):
-    h = (HERE / "index.html").read_text()
+async def page(request, name="exam.html", man="/manifest.json"):
+    h = (HERE / name).read_text()
     k = request.query_params.get("k", "")
     if k and authed(request):
-        h = h.replace('href="/manifest.json"', 'href="/manifest.json?k=' + k + '"')
+        h = h.replace('href="' + man + '"', 'href="' + man + '?k=' + k + '"')
         h = h.replace("const K=localStorage.k||'';", "const K=localStorage.k||'';")
     return HTMLResponse(h, headers={"cache-control": "no-store"})
+async def jpage(request): return await page(request, "jarvis.html", "/jarvis.webmanifest")
+async def jmanifest(request):
+    k = request.query_params.get("k", "")
+    start = "/jarvis?k=" + k if k and authed(request) else "/jarvis"
+    return JSONResponse({"name": "Jarvis", "short_name": "Jarvis", "start_url": start, "id": "/jarvis", "scope": "/", "display": "standalone", "background_color": "#06080f", "theme_color": "#06080f",
+                         "icons": [{"src": "/icon.png", "sizes": "1024x1024", "type": "image/png"}]})
 async def sw(request): return Response((HERE / "sw.js").read_text(), media_type="application/javascript", headers={"service-worker-allowed": "/"})
 async def icon(request): return Response((HERE / "icon.png").read_bytes(), media_type="image/png")
 async def manifest(request):
     k = request.query_params.get("k", "")
     start = "/?k=" + k if k and authed(request) else "/"
-    return JSONResponse({"name": "Friday", "short_name": "Friday", "start_url": start, "id": "/", "display": "standalone", "background_color": "#06080f", "theme_color": "#06080f",
+    return JSONResponse({"name": "Exam", "short_name": "Exam", "start_url": start, "id": "/", "display": "standalone", "background_color": "#06080f", "theme_color": "#06080f",
                          "icons": [{"src": "/icon.png", "sizes": "1024x1024", "type": "image/png"}]})
 _warm = {"t": 0}
 
@@ -392,7 +398,7 @@ async def _life(_):
     yield
 
 app = Starlette(lifespan=_life, routes=cjarvis.ROUTES + [Route("/", page), Route("/exam", exam, methods=["POST"]), Route("/sub", sub, methods=["POST"]), Route("/vapid", vapid), Route("/debug", debug), Route("/latest", latest),
-                        Route("/sw.js", sw), Route("/icon.png", icon), Route("/manifest.json", manifest), Route("/health", health), Route("/warm", warm)])
+                        Route("/sw.js", sw), Route("/icon.png", icon), Route("/manifest.json", manifest), Route("/jarvis", jpage), Route("/jarvis.webmanifest", jmanifest), Route("/health", health), Route("/warm", warm)])
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 7860)))
