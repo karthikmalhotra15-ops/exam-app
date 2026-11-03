@@ -1,6 +1,7 @@
 """Exam server (cloud). Runs without the Mac. Photos of a practice test in -> fast parallel draft answers back + push to phone/watch,
 then Opus re-solves every page and pushes ONLY corrections.
 Env: ANTHROPIC_API_KEY, EXAM_TOKEN, VAPID_PRIVATE (PEM text), VAPID_PUBLIC, DATA_DIR, MOCK=1 (no API calls, for plumbing tests)."""
+import threading
 import os, re, json, time, asyncio, base64
 from pathlib import Path
 from starlette.applications import Starlette
@@ -23,26 +24,71 @@ COURSES = (" COURSE KNOWLEDGE (student takes AP US History, AP Statistics, AP La
 "CHEM: sig figs, units, dimensional analysis, mole ratios, limiting reagent, ICE tables, Ka/Kb/Ksp, buffers (Henderson-Hasselbalch), thermodynamics (dH, dS, dG=dH-TdS, Hess), kinetics (rate laws, integrated laws, Ea), electrochemistry (E=E0-(RT/nF)lnQ), VSEPR/IMFs/periodic trends; use the AP equation sheet values. "
 "PHYSICS: draw free-body diagram mentally, kinematics (SUVAT), projectile motion (independent x/y, g=9.8 m/s^2), Newton's laws, energy and momentum conservation, circular motion, torque, circuits, waves; include units and direction; check answers for reasonableness.")
 
-COURSES = (" COURSE KNOWLEDGE (student takes AP US History, AP Statistics, AP Lang, AP Chemistry, AP Physics; identify the course from the page and apply its conventions). "
-"APUSH: answer from the AP framework periods 1-9 (1491-present); cause/effect, continuity/change, key acts, court cases, presidents, movements; for LEQ/DBQ/SAQ give thesis + evidence + complexity. "
-"STATS: state conditions (random, 10% rule, large counts, normal), name the exact procedure (1-prop z, 2-sample t, chi-square GOF/homogeneity/independence, slope t), give test stat, df, p-value, conclusion in context linked to alpha; CI interpretation 'we are C% confident the true ... is between'; describe SOCS for distributions; correlation is not causation. "
-"LANG: rhetorical analysis (SOAPSTone, ethos/pathos/logos, tone shifts, syntax, diction), argument and synthesis prompts, identify rhetorical devices and the author's purpose; for MCQ pick the answer best supported by the text. "
-"CHEM: sig figs, units, dimensional analysis, mole ratios, limiting reagent, ICE tables, Ka/Kb/Ksp, buffers (Henderson-Hasselbalch), thermodynamics (dH, dS, dG=dH-TdS, Hess), kinetics (rate laws, integrated laws, Ea), electrochemistry (E=E0-(RT/nF)lnQ), VSEPR/IMFs/periodic trends; use the AP equation sheet values. "
-"PHYSICS: draw free-body diagram mentally, kinematics (SUVAT), projectile motion (independent x/y, g=9.8 m/s^2), Newton's laws, energy and momentum conservation, circular motion, torque, circuits, waves; include units and direction; check answers for reasonableness.")
-
-DRAFT_SYS = ("You solve a photographed page of a student's PRACTICE test/homework done at home. "
+DRAFT_SYS = ("READING THE PHOTO: phone picture, maybe tilted, shadowed or curved. Read every word, number, subscript, exponent, table cell, axis label and graph/diagram detail before answering; use all data and any passage or figure on the page. Question cut off or continued from another page: answer what you can. Ignore the student's own handwriting unless part of the question. "
+             "You solve a photographed page of a student's PRACTICE test/homework done at home. "
              "Output ONLY one line per question: '<number>. <final answer>' (multiple choice: letter plus a few words; math/chem: value with units; "
-             "short response: one short sentence). No explanations, no markdown. Unreadable or cut-off question: '<number>. unreadable'. No questions on page: 'no questions'." + COURSES)
-CHECK_SYS = ("You are the careful checker for a student's practice test. Look at the page image, solve EVERY question yourself from scratch, rigorously "
+             "free/short response or explain-why: 1-3 tight sentences that earn full A+ credit, using the exact key terms and numbers a grader looks for, no filler; multiple choice and math stay answer-only). No markdown. Unreadable or cut-off question: '<number>. unreadable'. No questions on page: 'no questions'.")
+CHECK_SYS = ("READING THE PHOTO: phone picture, maybe tilted, shadowed or curved. Read every word, number, subscript, exponent, table cell, axis label and graph/diagram detail before answering; use all data and any passage or figure on the page. Question cut off or continued from another page: answer what you can. Ignore the student's own handwriting unless part of the question. "
+             "You are the careful checker for a student's practice test. Look at the page image, solve EVERY question yourself from scratch, rigorously "
              "(re-derive math, check units, sig figs, read every answer choice). Then compare with the DRAFT answers. "
              "Output ONLY lines for answers that are WRONG: '<number>. should be <correct answer> (<5-10 word reason>)'. "
-             "If every draft answer is right, output exactly: ALL GOOD" + COURSES)
+             "If every draft answer is right, output exactly: ALL GOOD")
 
+WATCH_FMT = (" OUTPUT FORMAT (overrides the one-line rule above): for EACH question write the first line '<number>. <final answer>', then for any math/science/calc/stats question 2-5 work lines each starting with '- ' showing the key steps as equations only "
+             "(no sentences, each line under 28 characters, split long ones across lines). Multiple choice: add one '- ' line with the key reason (under 28 chars). Short response: answer only, no work lines. No markdown, no blank lines inside a question.")
+DRAFT_SYS += WATCH_FMT + COURSES
+CHECK_SYS += COURSES + " For each wrong answer add 1-3 indented '- ' work lines (equations only, under 28 chars each)."
 
 
 def authed(r) -> bool:
     import secrets
     return bool(TOKEN) and secrets.compare_digest(r.headers.get("x-token", r.query_params.get("k", "")), TOKEN)
+
+
+def _hf(fn, *a, **k):
+    tok, repo = os.environ.get("HF_TOKEN"), os.environ.get("HF_DATA_REPO")
+    if not (tok and repo): return None
+    import huggingface_hub as h
+    return fn(h, tok, repo, *a, **k)
+
+
+def save_subs(lst):
+    """Write alert devices locally AND to the private HF dataset so Render restarts can't wipe them."""
+    old = SUBS.read_text() if SUBS.exists() else ""
+    new = json.dumps(lst); SUBS.write_text(new)
+    if new != old:
+        try: _hf(lambda h, t, r: h.HfApi(token=t).upload_file(path_or_fileobj=new.encode(), path_in_repo="exam_subs.json", repo_id=r, repo_type="dataset"))
+        except Exception as e: print("subs upload failed", e, flush=True)
+
+
+def restore_state():
+    """On boot: pull saved alert devices + ntfy topic back from HF."""
+    global NTFY
+    for name in ("exam_subs.json", "ntfy_topic"):
+        try:
+            data = Path(_hf(lambda h, t, r: h.hf_hub_download(r, name, repo_type="dataset", token=t, force_download=True))).read_text().strip()
+            if name == "ntfy_topic": NTFY = data
+            elif not subs(): SUBS.write_text(data)
+        except Exception as e: print("restore", name, e, flush=True)
+
+
+NTFY = os.environ.get("NTFY_TOPIC", "")
+
+
+def ntfy(title: str, body: str):
+    """Backup alert channel: ntfy.sh -> ntfy iPhone app -> watch. Doesn't depend on Safari web push or Gmail."""
+    if MOCK or not NTFY: return
+    try:
+        import urllib.request, urllib.error
+        req = urllib.request.Request("https://ntfy.sh/" + NTFY, body[:3900].encode(), {"Title": title.encode("ascii", "ignore").decode() or "Answers", "Priority": "high", "Tags": "pencil"})
+        for i in range(5):
+            try: urllib.request.urlopen(req, timeout=15).read(); break
+            except urllib.error.HTTPError as e:
+                if e.code != 429 or i == 4: raise
+                time.sleep(3 * (i + 1))
+        SMSLOG.append({"t": time.strftime("%H:%M:%S"), "ntfy": True, "tries": i + 1})
+    except Exception as e:
+        SMSLOG.append({"t": time.strftime("%H:%M:%S"), "ntfy": False, "err": str(e)[:100]})
 
 
 def subs() -> list:
@@ -60,7 +106,7 @@ def mail(subject: str, body: str):
     if MOCK or not (url and sec): return
     try:
         import urllib.request
-        req = urllib.request.Request(url, json.dumps({"secret": sec, "subject": subject, "body": body}).encode(), {"content-type": "text/plain"})
+        req = urllib.request.Request(url, json.dumps({"secret": sec, "subject": subject + " | " + " / ".join(body.split("\n"))[:150], "body": body, "text": body, "message": body, "htmlBody": body.replace("\n", "<br>")}).encode(), {"content-type": "text/plain"})
         r = urllib.request.urlopen(req, timeout=40).read(20).decode(errors="ignore")
         SMSLOG.append({"t": time.strftime("%H:%M:%S"), "mail": r.strip() == "ok", "resp": r.strip()[:20]})
     except Exception as e:
@@ -86,6 +132,7 @@ def sms(body: str):
 
 def push(title: str, body: str):
     t0 = time.time()
+    nt = threading.Thread(target=ntfy, args=(title, body), daemon=True); nt.start()
     try:
         return _push(title, body, t0)
     finally:
@@ -120,7 +167,7 @@ def _push(title: str, body: str, t0=0):
                 errs.append("jarvis " + type(e).__name__ + " " + str(e)[:120])
     except Exception as e:
         errs.append("jarvis cfg " + str(e)[:80])
-    SUBS.write_text(json.dumps(keep))
+    save_subs(keep)
     PUSHLOG.append({"t": time.strftime("%H:%M:%S"), "title": title, "subs": len(keep) + len([1 for _ in errs if "404" in _ or "410" in _]), "sent": n, "errs": errs})
     del PUSHLOG[:-10]
     return n
@@ -135,16 +182,40 @@ def client():
     return _client
 
 
+_ENH = {}
+def enhance(d: str) -> str:
+    """Fix a phone photo of a page: EXIF rotation, flatten shadows, boost contrast, sharpen, scale to ~2400px. Falls back to the original on any error."""
+    try:
+        import io
+        from PIL import Image, ImageOps, ImageFilter
+        raw = base64.b64decode(d.split(",", 1)[1])
+        im = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
+        long = max(im.size)
+        if long < 900: return d                          # tiny image: leave alone
+        k = 2400 / long
+        if k != 1: im = im.resize((round(im.width * k), round(im.height * k)), Image.LANCZOS)
+        im = ImageOps.autocontrast(im, cutoff=1)
+        im = im.filter(ImageFilter.UnsharpMask(radius=2, percent=90, threshold=3))
+        out = io.BytesIO(); im.save(out, "JPEG", quality=90)
+        return "data:image/jpeg;base64," + base64.b64encode(out.getvalue()).decode()
+    except Exception as e:
+        print("enhance err", type(e).__name__, e, flush=True); return d
+
+
 def img_block(d: str):
-    return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": d.split(",", 1)[1]}}
+    e = _ENH.get(d)
+    if e is None:
+        e = _ENH[d] = enhance(d)
+        if len(_ENH) > 40: _ENH.pop(next(iter(_ENH)))
+    return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": e.split(",", 1)[1]}}
 
 
-async def ask(model, system, d, text, thinking=False):
-    kw = dict(model=model, system=system, max_tokens=14000 if thinking else 1500,
-              messages=[{"role": "user", "content": [img_block(d), {"type": "text", "text": text}]}])
+async def ask(model, system, d, text, thinking=False, effort="high"):
+    kw = dict(model=model, system=system, max_tokens=14000 if thinking else 2500,
+              messages=[{"role": "user", "content": ([img_block(d)] if d else []) + [{"type": "text", "text": text}]}])
     if thinking:
         kw["thinking"] = {"type": "adaptive"}
-        kw["extra_body"] = {"output_config": {"effort": "high"}}
+        kw["extra_body"] = {"output_config": {"effort": effort}}
     r = await client().messages.create(**kw)
     return "".join(b.text for b in r.content if b.type == "text").strip()
 
@@ -169,23 +240,31 @@ async def check(images, drafts, note):
     return await asyncio.gather(*[one(d, dr) for d, dr in zip(images, drafts)])
 
 
-SOLVE_SYS = ("You solve a photographed page of a student's PRACTICE test/homework done at home. Solve EVERY question yourself from scratch, rigorously "
+SOLVE_SYS = ("READING THE PHOTO: phone picture, maybe tilted, shadowed or curved. Read every word, number, subscript, exponent, table cell, axis label and graph/diagram detail before answering; use all data and any passage or figure on the page. Question cut off or continued from another page: answer what you can. Ignore the student's own handwriting unless part of the question. "
+             "You solve a photographed page of a student's PRACTICE test/homework done at home. Solve EVERY question yourself from scratch, rigorously "
              "(re-derive math, check units, sig figs, read every answer choice). Output ONLY one line per question: '<number>. <final answer>' "
-             "(multiple choice: letter plus a few words; math/chem: value with units; short response: one short sentence). No explanations, no markdown. "
+             "(multiple choice: letter plus a few words; math/chem: value with units; free/short response or explain-why: 1-3 tight sentences that earn full A+ credit, using the exact key terms and numbers a grader looks for, no filler; multiple choice and math stay answer-only). No markdown. "
              "Unreadable question: '<number>. unreadable'. No questions on page: 'no questions'.")
-CONSENSUS_WAIT = 40   # seconds: send after 3 Opus checks finish, or at this cap with whatever finished
+SOLVE_SYS += WATCH_FMT
+CONSENSUS_WAIT = 10   # seconds: send after 2 Opus checks finish, or at this cap with whatever finished
 
 
 def parse_answers(text):
-    out = {}
+    """number -> full block (answer line + its '- ' work lines)."""
+    out, cur = {}, None
     for ln in (text or "").splitlines():
         ln = ln.replace("*", "").replace("`", "")
-        m = re.match(r"\s*(?:Q(?:uestion)?\s*)?\(?(\d+[a-z]?)[\.\):]\s*(.+)", ln, re.I)
-        if m: out.setdefault(m.group(1).lower(), m.group(2).strip())
+        m = re.match(r"\s*(?:Q(?:uestion)?\s*)?\(?(\d+)[\.\):]\s*(.+)", ln, re.I)
+        if m:
+            cur = m.group(1)
+            out.setdefault(cur, m.group(2).strip())
+        elif cur and ln.strip().startswith("-") and out.get(cur) is not None:
+            out[cur] += "\n  " + ln.strip()
     return out
 
 
 def akey(a):
+    a = a.split("\n")[0]
     m = re.match(r"\(?([A-Ea-e])[\.\):]?(\s|$)", a)
     return m.group(1).upper() if m else re.sub(r"[^a-z0-9.\-]", "", a.lower())[:40]
 
@@ -197,15 +276,16 @@ def vote(cands):
     return max(groups.values(), key=lambda g: (len(g), -cands.index(g[0])))[0]
 
 
-async def consensus(images, drafts, note):
-    """3 independent Opus solves per page in parallel, majority vote per question. Returns one final reply."""
+async def consensus(images, drafts_fut, note):
+    """2 independent Opus solves per page in parallel, majority vote per question. Returns one final reply."""
     async def solve(d):
-        try: return await asyncio.wait_for(ask(SMART, SOLVE_SYS, d, f"Student note: {note}", True), CONSENSUS_WAIT + 25)
+        try: return await asyncio.wait_for(ask(SMART, SOLVE_SYS, d, f"Student note: {note}", True, "low"), CONSENSUS_WAIT + 25)
         except Exception as e:
             print("solve err", type(e).__name__, flush=True); return ""
-    tasks = [[asyncio.create_task(solve(d)) for _ in range(3)] for d in images]
+    tasks = [[asyncio.create_task(solve(d)) for _ in range(2)] for d in images]
     flat = [t for row in tasks for t in row]
     await asyncio.wait(flat, timeout=CONSENSUS_WAIT)
+    drafts = await drafts_fut
     pages = []
     for i, row in enumerate(tasks):
         runs = [parse_answers(t.result()) for t in row if t.done() and not t.cancelled() and t.result()]
@@ -214,37 +294,32 @@ async def consensus(images, drafts, note):
         dr = parse_answers(drafts[i])
         if not runs:
             pages.append(drafts[i]); continue
-        nums = sorted({n for r in runs + [dr] for n in r}, key=lambda k: (int(re.match(r"\d+", k).group()), k))
-        pages.append("\n".join(f"{n}. " + vote([r[n] for r in runs if n in r] + ([dr[n]] if n in dr else [])) for n in nums))
+        nums = sorted({n for r in runs + [dr] for n in r}, key=int)
+        pages.append("\n\n".join(f"{n}. " + vote([r[n] for r in runs if n in r] + ([dr[n]] if n in dr else [])) for n in nums))
     return pages
+
+
+def push_all(reply):
+    """One notification per question (5a-5d together, 6 with all its parts together), strictly in order."""
+    groups = []
+    for blk in re.split(r"\n\s*\n", reply or ""):
+        blk = blk.strip()
+        if not blk: continue
+        m = re.match(r"\(?(?:Q(?:uestion)?\s*)?(\d+)[a-z]?[\.\):]", blk, re.I)
+        k = m.group(1) if m else None
+        if groups and (k is None or groups[-1][0] == k): groups[-1][1].append(blk)
+        elif k is None and not groups: groups.append(["x", [blk]])
+        else: groups.append([k, [blk]])
+    if len(groups) > 1 and groups[0][0] == "x": groups[0][0] = None
+    items = [(k, "\n".join(v)) for k, v in groups]
+    items = [(k, t) for k, t in items if not (k is None and re.fullmatch(r"PAGE \d+", t.strip(), re.I))] or items
+    for i, (k, t) in enumerate(items, 1):
+        push("Answers" if len(items) == 1 else (f"Q{k}" if k else f"Answers {i}/{len(items)}"), t)
+        if i < len(items): time.sleep(2.5)
 
 
 def fmt(drafts):
     return drafts[0] if len(drafts) == 1 else "\n\n".join(f"PAGE {i+1}\n" + d for i, d in enumerate(drafts))
-
-
-def by_question(reply):
-    """Group reply lines by question number: 5a,5b,5c -> one group '5'. Order kept."""
-    groups, cur = [], None
-    for ln in (reply or "").splitlines():
-        if not ln.strip(): continue
-        m = re.match(r"\s*(?:Q(?:uestion)?\s*)?\(?(\d+)[a-z]?[\.\):]", ln, re.I)
-        if m:
-            if cur and cur[0] == m.group(1): cur[1].append(ln)
-            else:
-                cur = (m.group(1), [ln]); groups.append(cur)
-        elif cur: cur[1].append(ln)
-        else: groups.append((None, [ln])); cur = None
-    return [(k, "\n".join(v)) for k, v in groups]
-
-
-async def push_each(reply):
-    gs = [g for g in by_question(reply) if g[0]] or by_question(reply)
-    if len(gs) <= 1:
-        await asyncio.to_thread(push, "Answers", reply); return
-    for k, t in gs:
-        await asyncio.to_thread(push, ("Q" + k) if k else "Answers", t)
-        await asyncio.sleep(1.2)
 
 
 async def verify(images, drafts, note):
@@ -262,6 +337,7 @@ async def verify(images, drafts, note):
     else:
         fixes = "\n".join(f"PAGE {i}: " + r for i, r in bad)
         await asyncio.to_thread(push, "Fix these answers", fixes)
+        await asyncio.to_thread(mail, "Fix these answers " + time.strftime("%H:%M"), fixes)
         await asyncio.to_thread(sms, "FIX: " + fixes)
 
 
@@ -295,7 +371,7 @@ async def essay_job(images, note, jid):
     try:
         if MOCK: parts_text = "Thesis: mock essay.\n\nBody: mock."
         else:
-            content = [img_block(d) for d in images] + [{"type": "text", "text": "Student note: " + note + "\nWrite the model response."}]
+            content = [img_block(d) for d in images if d] + [{"type": "text", "text": "Student note: " + note + "\nWrite the model response."}]
             r = await asyncio.wait_for(client().messages.create(model=SMART, max_tokens=7000, system=ESSAY_SYS, thinking={"type": "adaptive"},
                                        extra_body={"output_config": {"effort": "low"}}, messages=[{"role": "user", "content": content}]), 420)
             parts_text = "".join(b.text for b in r.content if b.type == "text").strip()
@@ -319,25 +395,29 @@ async def exam(request):
     if not authed(request): return JSONResponse({"error": "unauthorized"}, status_code=401)
     b = await request.json()
     images = [d for d in (b.get("images") or [])[:MAX_PAGES] if isinstance(d, str) and d.startswith("data:image")]
-    if not images: return JSONResponse({"error": "no images"}, status_code=400)
+    typed = (b.get("text") or "").strip()[:6000]
+    if not images and not typed: return JSONResponse({"error": "no images or text"}, status_code=400)
     note = (b.get("note") or "")[:300]
+    if not images:                                         # typed question(s), no photo: treat the text as one page
+        images = [None]
+        note = "The student typed these question(s) instead of sending a photo:\n" + typed
     s = b.get("sub")
     if isinstance(s, dict) and s.get("endpoint"):          # phone sends its push address with every request: no server-side registration needed
-        SUBS.write_text(json.dumps([x for x in subs() if x.get("endpoint") != s["endpoint"]] + [s]))
+        save_subs([x for x in subs() if x.get("endpoint") != s["endpoint"]] + [s])
     if b.get("mode") == "essay":
         jid = str(int(time.time() * 1000))
         asyncio.create_task(essay_job(images, note, jid))
         return JSONResponse({"reply": "Writing the full answer. It arrives on your watch in numbered parts in about a minute, and shows here too.", "id": jid, "secs": 0})
     t = time.time()
-    # ONE answer only: fast draft runs as a fallback while 3 Opus solves per page vote; we send once, after the checks (about 30s)
-    drafts = await draft(images, note)
-    pages = drafts if MOCK else await consensus(images, drafts, note)
+    # ONE answer only: fast draft runs as a fallback while 2 Opus solves per page vote; we send once, after the checks (about 30s)
+    dfut = asyncio.ensure_future(draft(images, note))   # draft and both Opus solves start together; hard cap ~10s
+    pages = await dfut if MOCK else await consensus(images, dfut, note)
     reply = fmt(pages)
     loop = asyncio.get_running_loop()
-    asyncio.create_task(push_each(reply))   # one notification per question, in order
+    loop.run_in_executor(None, push_all, reply)   # background: never make the screen wait on Apple
     loop.run_in_executor(None, sms, "Answers: " + reply)
     loop.run_in_executor(None, mail, "Answers " + time.strftime("%H:%M"), reply)
-    with open(DATA / "log.md", "a") as f: f.write(f"\n## {time.strftime('%Y-%m-%d %H:%M')} ({len(images)} pages, 3x Opus consensus)\n{reply}\n")
+    with open(DATA / "log.md", "a") as f: f.write(f"\n## {time.strftime('%Y-%m-%d %H:%M')} ({len(images)} pages, 2x Opus consensus)\n{reply}\n")
     return JSONResponse({"reply": reply, "secs": round(time.time() - t, 1)})
 
 
@@ -350,29 +430,35 @@ async def sub(request):
     s = await request.json()
     print("sub registered", s.get("endpoint", "")[:40], flush=True)
     cur = [x for x in subs() if x.get("endpoint") != s.get("endpoint")] + [s]
-    SUBS.write_text(json.dumps(cur)); return JSONResponse({"ok": True})
+    await asyncio.to_thread(save_subs, cur); return JSONResponse({"ok": True})
 
 
 async def debug(request):
     if not authed(request): return JSONResponse({"error": "unauthorized"}, status_code=401)
-    return JSONResponse({"subs": len(subs()), "endpoints": [s.get("endpoint", "")[:50] for s in subs()], "pushlog": PUSHLOG, "subtry": SUBTRY, "smslog": SMSLOG})
+    return JSONResponse({"subs": len(subs()), "ntfy": bool(NTFY), "endpoints": [s.get("endpoint", "")[:50] for s in subs()], "pushlog": PUSHLOG, "subtry": SUBTRY, "smslog": SMSLOG})
 
 
 async def vapid(request): return JSONResponse({"key": os.environ.get("VAPID_PUBLIC", "")})
-async def page(request):
-    h = (HERE / "index.html").read_text()
+async def page(request, name="exam.html", man="/manifest.json"):
+    h = (HERE / name).read_text()
     k = request.query_params.get("k", "")
     if k and authed(request):
-        h = h.replace('href="/manifest.json"', 'href="/manifest.json?k=' + k + '"')
+        h = h.replace('href="' + man + '"', 'href="' + man + '?k=' + k + '"')
         h = h.replace("const K=localStorage.k||'';", "const K=localStorage.k||'';")
     return HTMLResponse(h, headers={"cache-control": "no-store"})
+async def jpage(request): return await page(request, "jarvis.html", "/jarvis.webmanifest")
+async def jmanifest(request):
+    k = request.query_params.get("k", "")
+    start = "/jarvis?k=" + k if k and authed(request) else "/jarvis"
+    return JSONResponse({"name": "Jarvis", "short_name": "Jarvis", "start_url": start, "id": "/jarvis", "scope": "/", "display": "standalone", "background_color": "#06080f", "theme_color": "#06080f",
+                         "icons": [{"src": "/icon.png", "sizes": "1024x1024", "type": "image/png"}]})
 async def sw(request): return Response((HERE / "sw.js").read_text(), media_type="application/javascript", headers={"service-worker-allowed": "/"})
 async def icon(request): return Response((HERE / "icon.png").read_bytes(), media_type="image/png")
 async def manifest(request):
     k = request.query_params.get("k", "")
     start = "/?k=" + k if k and authed(request) else "/"
-    return JSONResponse({"name": "Exam", "short_name": "Exam", "start_url": start, "id": "/", "display": "standalone", "background_color": "#0b0d10", "theme_color": "#0b0d10",
-                         "icons": [{"src": "/icon.png", "sizes": "512x512", "type": "image/png"}]})
+    return JSONResponse({"name": "Exam", "short_name": "Exam", "start_url": start, "id": "/", "display": "standalone", "background_color": "#06080f", "theme_color": "#06080f",
+                         "icons": [{"src": "/icon.png", "sizes": "1024x1024", "type": "image/png"}]})
 _warm = {"t": 0}
 
 
@@ -390,8 +476,19 @@ async def warm(request):
 
 async def health(request): return JSONResponse({"ok": True, "mock": MOCK})
 
-app = Starlette(routes=[Route("/", page), Route("/exam", exam, methods=["POST"]), Route("/sub", sub, methods=["POST"]), Route("/vapid", vapid), Route("/debug", debug), Route("/latest", latest),
-                        Route("/sw.js", sw), Route("/icon.png", icon), Route("/manifest.json", manifest), Route("/health", health), Route("/warm", warm)])
+import cjarvis, contextlib
+
+
+@contextlib.asynccontextmanager
+async def _life(_):
+    try: await asyncio.to_thread(restore_state)
+    except Exception as e: print("restore failed", e, flush=True)
+    try: await cjarvis.start()
+    except Exception as e: print("cjarvis start failed", e, flush=True)
+    yield
+
+app = Starlette(lifespan=_life, routes=cjarvis.ROUTES + [Route("/", page), Route("/exam", exam, methods=["POST"]), Route("/sub", sub, methods=["POST"]), Route("/vapid", vapid), Route("/debug", debug), Route("/latest", latest),
+                        Route("/sw.js", sw), Route("/icon.png", icon), Route("/manifest.json", manifest), Route("/jarvis", jpage), Route("/jarvis.webmanifest", jmanifest), Route("/health", health), Route("/warm", warm)])
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 7860)))
