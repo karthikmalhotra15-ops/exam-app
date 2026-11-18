@@ -73,6 +73,7 @@ def restore_state():
 
 
 NTFY = os.environ.get("NTFY_TOPIC", "")
+_NTFY_LOCK = threading.Lock()
 
 
 def ntfy(title: str, body: str):
@@ -81,11 +82,12 @@ def ntfy(title: str, body: str):
     try:
         import urllib.request, urllib.error
         req = urllib.request.Request("https://ntfy.sh/" + NTFY, body[:3900].encode(), {"Title": title.encode("ascii", "ignore").decode() or "Answers", "Priority": "high", "Tags": "pencil"})
-        for i in range(5):
-            try: urllib.request.urlopen(req, timeout=15).read(); break
-            except urllib.error.HTTPError as e:
-                if e.code != 429 or i == 4: raise
-                time.sleep(3 * (i + 1))
+        with _NTFY_LOCK:  # serialize so parallel pushes don't burn the shared-IP rate limit
+            for i in range(8):
+                try: urllib.request.urlopen(req, timeout=15).read(); break
+                except urllib.error.HTTPError as e:
+                    if e.code != 429 or i == 7: raise
+                    time.sleep(min(5 * (i + 1), 20))
         SMSLOG.append({"t": time.strftime("%H:%M:%S"), "ntfy": True, "tries": i + 1})
     except Exception as e:
         SMSLOG.append({"t": time.strftime("%H:%M:%S"), "ntfy": False, "err": str(e)[:100]})
@@ -145,6 +147,7 @@ def _push(title: str, body: str, t0=0):
     from pywebpush import webpush, WebPushException
     keep, n, errs = [], 0, []
     for s in subs():
+        if not str(s.get("endpoint", "")).startswith("https://"): continue  # drop broken/empty device entries
         try:
             webpush(subscription_info=s, data=json.dumps({"title": title, "body": body[:1800]}), vapid_private_key=os.environ["VAPID_PRIVATE"],
                     vapid_claims={"sub": "mailto:exam@example.com"}, ttl=3600)
