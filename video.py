@@ -4,7 +4,7 @@ import os, io, time, base64, asyncio, subprocess, tempfile, glob
 from starlette.responses import JSONResponse
 
 MAX_BYTES = 400 * 1024 * 1024
-MAX_FRAMES = 30
+MAX_FRAMES = 60
 VIDEO_SYS = ("You get frames pulled from a short video a student filmed of a PRACTICE test/worksheet at home (glasses camera, may be tilted, blurry, or repeat the same page). "
              "Read every frame, find EVERY distinct question (same question seen in several frames = one question; use the sharpest view). "
              "For each question, in order, write:\n<number>. <question topic in a few words>\nExplanation: how to solve it, key steps/equations/concepts, as short lines.\nAnswer: <final answer> (MC: letter + choice text; math: value with units).\n\n"
@@ -19,16 +19,16 @@ def ffmpeg_exe():
 
 def frames(path):
     """1 fps (2 fps if short), keep frames that differ from the last kept one, prefer sharp ones."""
-    from PIL import Image, ImageFilter, ImageStat, ImageChops
+    from PIL import Image, ImageFilter, ImageStat, ImageChops, ImageOps
     d = tempfile.mkdtemp()
-    subprocess.run([ffmpeg_exe(), "-loglevel", "error", "-i", path, "-vf", "fps=2,scale='min(1800,iw)':-2", "-q:v", "3", f"{d}/f%04d.jpg"], check=True, timeout=240)
+    subprocess.run([ffmpeg_exe(), "-loglevel", "error", "-i", path, "-vf", "fps=2,scale='min(1400,iw)':-2", "-q:v", "4", f"{d}/f%04d.jpg"], check=True, timeout=240)
     files = sorted(glob.glob(f"{d}/*.jpg"))
     def sharp(im): return ImageStat.Stat(im.convert("L").resize((480, 480)).filter(ImageFilter.FIND_EDGES)).var[0]
-    def thumb(im): return im.convert("L").resize((48, 48))
+    def thumb(im): return ImageOps.autocontrast(im.convert("L").resize((160, 120)), cutoff=1)
     groups, last = [], None
     for f in files:
         im = Image.open(f); t = thumb(im); s = sharp(im)
-        if last is not None and ImageStat.Stat(ImageChops.difference(t, last)).mean[0] < 12:
+        if last is not None and ImageStat.Stat(ImageChops.difference(t, last)).mean[0] < 4:
             if s > groups[-1][0]: groups[-1] = (s, f)       # same scene: keep the sharper frame
         else:
             groups.append((s, f))
