@@ -479,7 +479,7 @@ async def warm(request):
 
 async def health(request): return JSONResponse({"ok": True, "mock": MOCK})
 
-import cjarvis, contextlib
+import cjarvis, contextlib, sys, video as _video
 
 
 @contextlib.asynccontextmanager
@@ -491,7 +491,7 @@ async def _life(_):
     yield
 
 app = Starlette(lifespan=_life, routes=cjarvis.ROUTES + [Route("/", page), Route("/exam", exam, methods=["POST"]), Route("/sub", sub, methods=["POST"]), Route("/vapid", vapid), Route("/debug", debug), Route("/latest", latest),
-                        Route("/sw.js", sw), Route("/icon.png", icon), Route("/manifest.json", manifest), Route("/jarvis", jpage), Route("/jarvis.webmanifest", jmanifest), Route("/health", health), Route("/warm", warm)])
+                        Route("/sw.js", sw), Route("/icon.png", icon), Route("/manifest.json", manifest), Route("/jarvis", jpage), Route("/jarvis.webmanifest", jmanifest), Route("/health", health), Route("/warm", warm), Route("/video", _video.route(sys.modules[__name__]), methods=["POST"])])
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 7860)))

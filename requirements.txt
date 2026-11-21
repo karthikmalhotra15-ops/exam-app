@@ -4,3 +4,4 @@ uvicorn
 pywebpush
 pillow
 huggingface_hub
+imageio-ffmpeg
